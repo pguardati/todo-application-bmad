@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Todo — prototype</title>
+  <style>
+    :root {
+      --color-canvas: #000000;
+      --color-text: #e8e8e8;
+      --color-text-muted: #666666;
+      --color-text-done: #555555;
+      --color-accent: #4caf6a;
+      --color-accent-hover: #6fd98a;
+      --color-border: #222222;
+      --color-control: #444444;
+      --color-control-hover: #888888;
+
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      --font-size-body: 1rem;
+      --font-size-label: 0.75rem;
+      --font-weight-label: 600;
+      --letter-spacing-label: 0.12em;
+      --line-height: 1.4;
+
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 24px;
+      --space-6: 32px;
+      --space-7: 48px;
+      --space-8: 64px;
+
+      --control-size: 1rem;
+      --add-btn-size: 2rem;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--color-canvas);
+      color: var(--color-text);
+      font-family: var(--font-family);
+      font-size: var(--font-size-body);
+      line-height: var(--line-height);
+    }
+
+    .app {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: var(--space-6) var(--space-7);
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .add-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      margin-bottom: var(--space-8);
+      border-bottom: 1px solid var(--color-border);
+      padding-bottom: var(--space-3);
+    }
+
+    .btn-icon {
+      flex-shrink: 0;
+      width: var(--add-btn-size);
+      height: var(--add-btn-size);
+      border: none;
+      background: transparent;
+      color: var(--color-accent);
+      font-size: 1.5rem;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .btn-icon:hover {
+      color: var(--color-accent-hover);
+    }
+
+    .btn-icon:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+
+    .field-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--color-text);
+      font-family: inherit;
+      font-size: var(--font-size-body);
+      padding: var(--space-2) 0;
+      outline: none;
+    }
+
+    .field-input:focus-visible {
+      outline: none;
+    }
+
+    .add-bar:focus-within {
+      border-bottom-color: var(--color-accent);
+    }
+
+    .columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-8);
+      flex: 1;
+    }
+
+    .section-label {
+      font-size: var(--font-size-label);
+      font-weight: var(--font-weight-label);
+      letter-spacing: var(--letter-spacing-label);
+      text-transform: uppercase;
+      color: var(--color-accent);
+      margin-bottom: var(--space-4);
+    }
+
+    .list {
+      list-style: none;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3) 0;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .row input[type="checkbox"] {
+      flex-shrink: 0;
+      width: var(--control-size);
+      height: var(--control-size);
+      accent-color: var(--color-accent);
+      cursor: pointer;
+    }
+
+    .row input[type="checkbox"]:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+
+    .row .label {
+      flex: 1;
+      font-size: var(--font-size-body);
+      color: var(--color-text);
+    }
+
+    .row.done .label {
+      color: var(--color-text-done);
+      text-decoration: line-through;
+    }
+
+    .row .btn-icon {
+      width: auto;
+      height: auto;
+      font-size: 1.125rem;
+      color: var(--color-control);
+      padding: var(--space-1) var(--space-2);
+    }
+
+    .row .btn-icon:hover {
+      color: var(--color-control-hover);
+    }
+
+    @media (max-width: 640px) {
+      .app {
+        padding: var(--space-5);
+      }
+      .columns {
+        grid-template-columns: 1fr;
+        gap: var(--space-6);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="add-bar">
+      <button type="button" class="btn-icon" id="add-btn" aria-label="Add todo">+</button>
+      <input type="text" class="field-input" id="new-todo" autofocus aria-label="New todo">
+    </div>
+
+    <div class="columns">
+      <section class="column">
+        <h2 class="section-label">TODO</h2>
+        <ul class="list" id="todo-list"></ul>
+      </section>
+
+      <section class="column">
+        <h2 class="section-label">DONE</h2>
+        <ul class="list" id="done-list"></ul>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const todoList = document.getElementById('todo-list');
+    const doneList = document.getElementById('done-list');
+    const input = document.getElementById('new-todo');
+    const addBtn = document.getElementById('add-btn');
+
+    const seed = [
+      { text: 'Buy groceries', done: false },
+      { text: 'Reply to Marco', done: false },
+      { text: 'Fix the auth bug', done: false },
+      { text: 'Morning standup', done: true },
+      { text: 'Deploy staging', done: true },
+    ];
+
+    function createRow(text, done) {
+      const li = document.createElement('li');
+      li.className = 'row' + (done ? ' done' : '');
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = done;
+      cb.setAttribute('aria-label', done ? 'Mark incomplete' : 'Mark complete');
+
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = text;
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn-icon';
+      del.setAttribute('aria-label', 'Delete');
+      del.textContent = '×';
+
+      cb.addEventListener('change', () => {
+        const target = cb.checked ? doneList : todoList;
+        li.classList.toggle('done', cb.checked);
+        cb.setAttribute('aria-label', cb.checked ? 'Mark incomplete' : 'Mark complete');
+        target.appendChild(li);
+      });
+
+      del.addEventListener('click', () => li.remove());
+
+      li.append(cb, label, del);
+      return li;
+    }
+
+    function render() {
+      todoList.innerHTML = '';
+      doneList.innerHTML = '';
+      seed.forEach(item => {
+        const row = createRow(item.text, item.done);
+        (item.done ? doneList : todoList).appendChild(row);
+      });
+    }
+
+    function addTodo() {
+      const text = input.value.trim();
+      if (!text) return;
+      todoList.appendChild(createRow(text, false));
+      input.value = '';
+    }
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') addTodo();
+    });
+
+    addBtn.addEventListener('click', addTodo);
+
+    render();
+  </script>
+</body>
+</html>
