@@ -2,16 +2,68 @@
 title: 'Story 1.1 — Walking Skeleton: Runnable, Testable, Deployable Shell'
 type: 'feature'
 created: '2026-08-29'
-status: 'in-review'
+status: 'done'
 baseline_revision: 'c26724b28db53e03fb78eb892f6e695de3a57fa4'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
   - '{project-root}/_bmad-output/planning-artifacts/architecture/architecture-bmad-todo-application-typescript-2026-08-28/ARCHITECTURE-SPINE.md'
   - '{project-root}/_bmad-output/planning-artifacts/ux-designs/ux-bmad-todo-application-typescript-2026-08-24/mockups/main.html'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The compose dev profile hardcodes user "1000:1000" and runs npm install over the
+      bind-mounted host frontend/, so it breaks for any host UID other than 1000.
+    evidence: |-
+      docker-compose.yml pins the dev frontend to uid 1000 and installs into the bind mount,
+      clobbering the host node_modules with container-built binaries. make dev (the path the
+      story's acceptance criteria actually exercise) runs on the host, so this never surfaced.
+    location: >-
+      docker-compose.yml
+    severity: medium
+  - summary: >-
+      Two design tokens fall below WCAG AA contrast on the black canvas.
+    evidence: |-
+      --color-text-done #555555 is roughly 3:1 and --color-control #444444 roughly 2:1 against
+      #000000, below the 4.5:1 AA floor for text. The story's axe run is clean only because the
+      empty shell renders no completed row and no delete control; story 1.4 will render both.
+      NFR-5 makes WCAG AA a stretch goal rather than a gate, and the values come from DESIGN.md,
+      so this is a design decision to revisit, not a defect in this story.
+    location: >-
+      frontend/src/styles/tokens.css
+    severity: medium
+  - summary: >-
+      The frontend has no linter or formatter, only a typecheck, while the backend enforces
+      ruff check and ruff format --check.
+    evidence: |-
+      frontend package.json defines "lint": "tsc --noEmit". A >100-character line already sits
+      in client.test.ts with nothing flagging it. make lint satisfies AD-13 as specified, so
+      adding ESLint/Prettier is a parity improvement rather than a story-1.1 defect.
+    location: >-
+      frontend/package.json
+    severity: low
+  - summary: >-
+      nginx sets no security response headers and there is no dependency-update automation or
+      vulnerability scanning across the three pinned ecosystems.
+    evidence: |-
+      nginx.conf sets no X-Content-Type-Options, X-Frame-Options, or CSP, and no proxy timeouts.
+      No Dependabot/Renovate config and no scan step exist despite exact pins in Python, npm,
+      and Docker. AD-16's baseline enumerates specific controls and does not include these, so
+      they are hardening beyond the story's stated security floor.
+    location: >-
+      frontend/nginx.conf, .github/workflows/ci.yml
+    severity: low
+  - summary: >-
+      The app shell has no <form>, so the "submit via Enter" affordance cannot work as structured.
+    evidence: |-
+      App.tsx renders a bare input beside a type="button" control. Enter cannot submit without a
+      form or an explicit key handler. Story 1.3 owns the add-bar behaviour and will restructure
+      this, so it is noted rather than fixed here.
+    location: >-
+      frontend/src/App.tsx
+    severity: low
+
 ---
 
 <intent-contract>
@@ -131,6 +183,33 @@ The repository currently contains no application code. Everything below is creat
 
 ## Review Triage Log
 
+### 2026-08-29 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 19: (high 1, medium 10, low 8)
+- defer: 5: (high 0, medium 2, low 3)
+- reject: 8: (high 0, medium 2, low 6)
+- addressed_findings:
+  - `[high]` `[patch]` `created_at` lost tzinfo on the SQLite round-trip, serializing `createdAt` without a UTC offset in violation of AD-3 — reproduced directly, then fixed at the contract authority with a shared `UtcDatetime` annotation in `schemas.py` so every future schema inherits it; pinned by a test.
+  - `[medium]` `[patch]` The camelCase wire contract was asserted nowhere (`HealthRead`'s single-word fields are casing-invariant) — added a `TodoRead` alias-serialization test; removing the alias generator now fails 2 tests.
+  - `[medium]` `[patch]` The commit half of the session lifecycle was untested — added the mirror of the rollback probe; removing `session.commit()` now fails a test.
+  - `[medium]` `[patch]` `init_db()` never ran under the suite (`ASGITransport` skips lifespan) — added a direct idempotency test using SQLAlchemy `inspect()`.
+  - `[medium]` `[patch]` No `.dockerignore` on either image, so the build context could carry a local `.env`, `.venv/`, `node_modules/`, and `todo.db` — added both.
+  - `[medium]` `[patch]` The frontend HEALTHCHECK probed `/` only, so the compose gate passed with a broken `/api` proxy — now probes `/api/health` through nginx; verified it flips unhealthy when the backend stops.
+  - `[medium]` `[patch]` `.env` was resolved from the process CWD (`backend/`) while the README pointed at the repo root, so a README-following user's `.env` was silently ignored — env file now resolved from the repo root.
+  - `[medium]` `[patch]` `make dev` used `kill %1`, which has no job control in Make's `sh`, leaving uvicorn holding port 8000 after Ctrl-C — now traps a captured PID.
+  - `[medium]` `[patch]` `client.ts` parsed every non-OK response as JSON, so nginx's own HTML 502/504 threw a raw `SyntaxError` past `ApiRequestError` — guarded, with a test.
+  - `[medium]` `[patch]` `make install` used `npm install` against lockfiles the Docker build installs with `npm ci` — switched to `npm ci`.
+  - `[medium]` `[patch]` `sprint-status.yaml` still read `backlog` for epic-1 and story 1.1 with the PR open — synced to `in-progress` / `review`.
+  - `[low]` `[patch]` `check_health` returned the degraded payload leaving the session in a failed transaction for `get_session` to commit — added `session.rollback()`.
+  - `[low]` `[patch]` The `RequestValidationError` handler discarded `exc`, making 400s invisible in operations — detail now logged server-side only, response body unchanged.
+  - `[low]` `[patch]` `make dev` bound uvicorn to `0.0.0.0`, exposing a no-auth local app to the LAN — bound to `127.0.0.1`.
+  - `[low]` `[patch]` CI lacked `permissions`, `timeout-minutes`, and a `concurrency` group — all three added, make-targets-only rule intact.
+  - `[low]` `[patch]` `trace: 'on-first-retry'` with `retries: 0` could never capture a trace — changed to `retain-on-failure`.
+  - `[low]` `[patch]` The QA report cited axe-core 4.10.2 against a 4.13.0 pin — re-ran with the bundled 4.13.0 build and corrected the report.
+  - `[low]` `[patch]` `connect_args={"check_same_thread": False}` was applied unconditionally, breaking any non-SQLite URL at import — gated on a sqlite URL.
+  - `[low]` `[patch]` The README listed no prerequisites and never mentioned the per-story QA report — both added.
+
 ## Design Notes
 
 Health degradation is observable, not hypothetical: `services.check_health` calls `repository.check_connection` inside a `try`, and the router chooses the status code from the result. That keeps the 503 path unit-reachable by patching the repository, with no `Session` construction outside `db.py`.
@@ -163,3 +242,50 @@ def health(session: Session = Depends(get_session), response: Response = ...):
 
 **Manual checks (if no CLI):**
 - `docker compose --profile test config` shows both images with a non-root `user` and the frontend's `depends_on` health condition.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented change**
+
+Story 1.1's walking skeleton, authored from the architecture's Structural Seed: a FastAPI + SQLModel backend with the `Todo` table, one session-per-request dependency, a central `{error, message}` envelope and the `GET /api/health` contract; a Vite + React shell rendering the black canvas from `DESIGN.md` tokens through a same-origin `/api` proxy; and the surrounding envelope — both non-root Dockerfiles, one `docker-compose.yml` with `dev`/`test` profiles, the Playwright harness, the ten-target `Makefile`, and a `pull_request` CI workflow that invokes `make` only. No user-facing todo behaviour; `routers/todos.py` and the `api`/`hooks` seams exist empty for stories 1.2–1.4.
+
+**Files changed** (48 files, plus lockfiles; branch `story-1.1-walking-skeleton`, commits `2a91f70` and `f6b8cc7`)
+
+- `backend/app/{config,db,models,schemas,errors,repository,services,deps,main}.py` -- the layered backend: typed `Settings` as the only env read, engine and session lifecycle, the `Todo` table with its nullable `user_id` seam, the camelCase contract authority, the `AppError` hierarchy and its three central handlers.
+- `backend/app/routers/{health,todos}.py` -- the sole health endpoint; an empty todos router as the seam later stories extend.
+- `backend/tests/{conftest,test_health}.py` -- the temp-file SQLite and ASGI client fixtures every later story reuses, plus 13 tests covering the whole I/O matrix.
+- `backend/{pyproject.toml,Dockerfile,.dockerignore}` -- pinned dependencies with a tool-enforced coverage gate; a non-root image with a health-gated `HEALTHCHECK`.
+- `frontend/src/styles/{tokens.css,app.css}`, `frontend/src/{App.tsx,main.tsx,App.test.tsx}` -- every design token declared once, referenced only via `var()`; the shell and its smoke test.
+- `frontend/src/api/{types.ts,client.ts}`, `frontend/src/hooks/useTodos.ts` (+ tests) -- the relative-path client and state seams.
+- `frontend/{package.json,vite.config.ts,tsconfig.json,index.html,nginx.conf,Dockerfile,.dockerignore}` -- pinned stack, dev proxy, Vitest coverage threshold, and the nginx image.
+- `e2e/{package.json,playwright.config.ts,tests/.gitkeep}` -- the harness, proven by an empty-but-passing suite as the story's test table specifies.
+- `Makefile`, `docker-compose.yml`, `.env.example`, `.gitignore`, `.github/workflows/ci.yml`, `README.md` -- the single entrypoint, the two profiles, and CI.
+- `qa/story-1.1.md` -- the agentic QA report: five checks, each with a verdict and evidence.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` -- epic-1 to `in-progress`, story 1.1 to `review`.
+
+**Review findings breakdown**
+
+19 patches applied (1 high, 10 medium, 8 low), 5 items deferred, 8 rejected as noise or as belonging to a later story. No intent gap and no spec defect: every finding was fixable in place without human input, so no repair loopback was needed.
+
+**Follow-up review recommendation**
+
+`true`. Patched severities: high 1, medium 10, low 8. One high-severity patched finding triggers the recommendation on its own; the weighted score is `3 x 10 + 1 x 8 = 38`, well past the threshold of 5.
+
+**Verification performed**
+
+- `make ci` -- exit 0, twice: once on the initial implementation and once after the patches. 13 backend tests at 99% line coverage, 9 frontend tests at 88.46%, lint clean, the compose `test` profile healthy, and the empty Playwright suite exiting zero.
+- Both coverage gates proven load-bearing by forcing the threshold above the real number: backend `--fail-under=100` exits 2, frontend `thresholds.lines=95` exits 1.
+- The AD-3 timestamp defect was reproduced directly before the fix (a `Todo` written and read back in a fresh session returned `tzinfo=None`, serializing `createdAt` with no offset) and confirmed fixed after it (the wire value now ends in `Z`).
+- The three new coverage tests were each proven load-bearing by mutating the source: removing the alias generator fails 2 tests, removing the `UtcDatetime` annotation fails 2, removing `session.commit()` fails 1.
+- Static invariant checks: `os.environ` appears only in `config.py`; no hex literal in any `.ts`/`.tsx` source; `GET /api/health` is the only health route; no `text()` or string-built SQL.
+- I/O matrix audit: all seven rows are covered by tests that ran and passed -- health healthy and degraded, the `NOT_FOUND` envelope, the 422-to-400 remap, the generic 500 with its rollback assertion, `Settings` defaults, and session rollback on request failure.
+
+**Residual risks**
+
+- The operational acceptance criteria -- the compose profiles, the nginx `/api` proxy, non-root containers, the Structural Seed's shape -- are discharged by one-shot agentic observation recorded in `qa/story-1.1.md`, not by anything `make ci` re-runs. The story's own test table specifies an empty E2E suite, so the first automated traversal of the proxy arrives with story 1.2's journey spec.
+- Two pinned versions could not be honoured literally: the backend coverage gate is enforced by `[tool.coverage.report] fail_under` rather than pytest's `--cov-fail-under` (which prints its failure but exits 0 under the pinned pytest 9), and the `uv` builder image tag does not resolve on this Docker daemon, so the Dockerfile copies a pinned `uv` binary instead. AD-13's substance -- tool-enforced, no shell gate -- holds in both cases.
+- A few unpinned transitive dev dependencies were resolved to nearest available releases (`pydantic-settings`, `pytest-cov`, `jsdom`, `@testing-library/jest-dom`); every version the architecture spine pins is used exactly.
+- `NODE_ENV=production` is set in this environment, so every npm invocation passes `--include=dev` and the Vitest scripts set `NODE_ENV=test`. A machine without that env var is unaffected, but the flags are load-bearing here.
