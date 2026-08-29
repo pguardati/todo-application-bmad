@@ -2,13 +2,58 @@
 title: 'Story 1.3 — Add a Todo'
 type: 'feature'
 created: '2026-08-29'
-status: 'in-review' # draft | ready-for-dev | in-progress | in-review | done | blocked
+status: 'done' # draft | ready-for-dev | in-progress | in-review | done | blocked
 baseline_revision: '996747169f4aba8800967762f177af7ed184b904'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: [oversized]
-deferred: []
+deferred:
+  - summary: >-
+      A create against an unreachable backend takes about 60 seconds to surface, because nginx
+      holds the proxied POST for its default proxy_read_timeout.
+    evidence: |-
+      Observed in real Chrome with the backend stopped. The behaviour is correct once it arrives —
+      only the affected row reverts, the message is recoverable, the typed text is preserved — but
+      the pending row sits disabled for a minute with no feedback. The fix is a client-side
+      AbortController deadline or an nginx timeout, and it belongs with Story 1.6's retry and
+      failure affordances.
+    location: >-
+      frontend/src/hooks/useTodos.ts:75
+    severity: medium
+  - summary: >-
+      Nothing pins that POST stamps user_id from current_scope, so dropping the owner argument
+      leaves every suite green.
+    evidence: |-
+      repository.create_todo passes user_id=owner. Since current_scope returns None in v1, every
+      row is written with a NULL owner either way, so removing the argument changes no observable
+      behaviour under the current tests. The read side has
+      test_rows_belonging_to_another_owner_are_excluded; the create side has no equivalent. Covering
+      it needs a test row the epic's Story 1.3 table does not have, and the user restricted this
+      story to that table.
+    location: >-
+      backend/app/repository.py:17
+    severity: medium
+  - summary: >-
+      The load-effect merge that preserves optimistic rows is not asserted by any test.
+    evidence: |-
+      Reverting the merge back to setTodos(loaded) leaves all 17 frontend tests green. The
+      behaviour was verified in real Chrome with GET /api/todos delayed 15 seconds. Pinning it
+      would need a sixth frontend case, which the epic's five-row table does not allow.
+    location: >-
+      frontend/src/hooks/useTodos.ts:38
+    severity: medium
+  - summary: >-
+      Playwright now runs with fullyParallel false and workers 1, serializing every future spec to
+      solve a two-file database collision.
+    evidence: |-
+      The two journeys share one database and reset it through docker compose exec, so parallel
+      workers would interleave their seed and clear helpers. Serializing repo-wide was the minimal
+      fix, but per-spec data scoping (a unique owner or id prefix per journey) would restore
+      parallelism and stop the cost growing with every added slice.
+    location: >-
+      e2e/playwright.config.ts:5
+    severity: low
 ---
 
 <intent-contract>
@@ -114,6 +159,46 @@ Frontend (under `frontend/`):
 
 ## Review Triage Log
 
+### 2026-08-29 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 7: (high 0, medium 3, low 4)
+- defer: 4: (high 0, medium 3, low 1)
+- reject: 22: (high 0, medium 0, low 22)
+- addressed_findings:
+  - `[medium]` `[patch]` The load effect's `setTodos(loaded)` overwrote optimistic rows. The input is
+    autofocused on load, so a user can submit before `listTodos` settles; their row then vanished
+    from the board although the POST had succeeded. The effect now merges, keeping pending rows on
+    top of the arriving list. Verified in real Chrome with the list request delayed 15 seconds.
+  - `[medium]` `[patch]` The client's accept boundary was unpinned: an off-by-one guard, or a lower
+    `DESCRIPTION_MAX_LENGTH` in `api/types.ts`, silently refused a 200-character description the API
+    accepts while every suite stayed green. The epic's existing "both submit paths" case was
+    strengthened to submit a maximum-length description and assert it reached `createTodo`;
+    mutation-verified against a `>=` guard.
+  - `[medium]` `[patch]` `setError(null)` on the success path was asserted by nothing, so deleting it
+    left a stale red alert on the board forever after one failure, with all tests green. The epic's
+    existing rollback case now continues into a succeeding retry and asserts the alert is gone;
+    mutation-verified.
+  - `[low]` `[patch]` The client counted UTF-16 code units while the server counts code points, so a
+    150-emoji description was silently refused client-side though the API accepts it. The guard now
+    measures `[...trimmed].length`.
+  - `[low]` `[patch]` `test_boundary_lengths_are_accepted` had no row in the epic's Story 1.3 table
+    and duplicated the unit row's boundary cases over HTTP. Removed, per the invocation's
+    restriction to the table's tests.
+  - `[low]` `[patch]` The create tests hard-coded `"x" * 201` while `test_schemas.py` used the
+    constant, so the bound could drift out from under them. They now import
+    `DESCRIPTION_MAX_LENGTH`.
+  - `[low]` `[patch]` `sprint-status.yaml` still carried `1-3-add-a-todo: backlog`. Set to `review`,
+    matching how 1-1 and 1-2 are recorded, with `last_updated` refreshed.
+
+Rejected as noise or out of scope on the intent's authority: a `maxLength` attribute and inline
+validation copy (the epic mandates silent rejection plus a 250-character paste ad-hoc check), a
+double-submit guard, control-character and Unicode-normalization validation, an `IntegrityError`
+branch (the generic handler in `main.py` already answers the AD-4 envelope), temp-id collisions (the
+counter is monotonic), an unmount guard, the `BoardTodo` type living in the hook module (components
+depending on hooks is downward under AD-1), OpenAPI 400 documentation, a shared E2E reset fixture,
+and various test-hygiene preferences.
+
 ## Design Notes
 
 **Where the 400 comes from.** The normalizer raises `ValueError` inside `TodoCreate`, so FastAPI wraps it in `RequestValidationError` and the handler already registered in `main.py:46` answers `400 {"error": "VALIDATION_ERROR", ...}`. That keeps one error path for malformed bodies and rejected descriptions alike — do not raise `app.errors.ValidationError` from the route or the service for this case.
@@ -143,3 +228,75 @@ def _normalize_description(value: str) -> str:
 - `grep -rn 'fetch(' frontend/src --include='*.ts' --include='*.tsx' | grep -v test` -- expected: only `api/client.ts`.
 - `curl -s -X POST localhost:8000/api/todos -H 'Content-Type: application/json' -d '{"description":"  spec check  "}'` -- expected: `201` with a trimmed description, UUIDv4 `id`, camelCase `createdAt`, no `userId`.
 - `curl -s -X POST localhost:8000/api/todos -H 'Content-Type: application/json' -d '{"description":"   "}'` -- expected: `400 {"error":"VALIDATION_ERROR","message":"..."}` with no stack trace, SQL or request echo.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented change**
+
+The create half of the todo CRUD API and the add bar that drives it. `POST /api/todos` trims and
+bounds the description in `schemas.py`, so rejections and malformed bodies alike surface through the
+`RequestValidationError` handler already registered in `main.py` as one `400 VALIDATION_ERROR`
+envelope — no second error path. The row is constructed in `repository.py` with the owner taken from
+`current_scope`, flushed and refreshed but never committed there, leaving the request-scoped session
+in charge. On the client, `createTodo` joins `api/client.ts` as the second and only other request
+site, `useTodos` gained `addTodo` — silent client-side rejection, a temp-keyed pending row prepended
+before the call, a swap by temp key on success, and removal of exactly that row on failure — and a
+new `AddBar` holds nothing but its input text, clearing only once the server confirms.
+
+**Files changed**
+
+- `backend/app/schemas.py` — `_normalize_description` trims then bounds, attached to
+  `TodoCreate.description`.
+- `backend/app/repository.py` — `create_todo`: construct, add, flush, refresh; no commit.
+- `backend/app/services.py` — `create_todo` delegates to the repository.
+- `backend/app/routers/todos.py` — `POST ""`, 201, `TodoRead`, owner from `current_scope`.
+- `backend/tests/test_schemas.py` — the epic's unit row: trim-then-validate at 0, 1, 200, 201.
+- `backend/tests/test_todos_api.py` — the epic's four backend integration rows.
+- `frontend/src/api/client.ts` — `createTodo(description)`.
+- `frontend/src/hooks/useTodos.ts` — `addTodo`, the `BoardTodo` type, optimistic insert and per-row
+  rollback; the load effect merges rather than replaces.
+- `frontend/src/components/AddBar.tsx` — new; holds only its input text.
+- `frontend/src/components/TodoRow.tsx`, `TodoColumn.tsx` — carry `pending` through and disable an
+  unconfirmed row's controls.
+- `frontend/src/App.tsx` — renders `AddBar`; alert, loading and columns untouched.
+- `frontend/src/styles/app.css` — disabled-control rules from existing tokens.
+- `frontend/src/App.test.tsx` — the epic's five frontend integration rows.
+- `e2e/tests/create-todo.spec.ts` — new; the single journey, self-resetting.
+- `e2e/playwright.config.ts` — serialized so the two journeys cannot interleave their resets.
+- `qa/story-1.3.md` — the five agentic checks with verdicts and evidence.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — story 1.3 moved to `review`.
+
+**Review findings breakdown**
+
+- Patches applied: 7 (high 0, medium 3, low 4).
+- Items deferred: 4 — the ~60s nginx timeout on a create against a dead backend, the unpinned
+  owner-stamping on POST, the untested load/create merge, and the repo-wide Playwright
+  serialization.
+- Items rejected: 22.
+- Follow-up review recommended: `true` — patched severities were high 0, medium 3, low 4, giving
+  3 x 3 + 1 x 4 = 13, at or above the threshold of 5.
+
+**Verification performed**
+
+- `make lint` — exit 0 (Ruff check and format, `tsc --noEmit`).
+- `make test-backend` — 30 passed, coverage 99% (182 statements, 2 missed).
+- `make test-frontend` — 17 passed across 3 files.
+- `make test-e2e` — both journeys pass; the test profile is torn down with its volumes.
+- Greps: every `select(`/`order_by`/`session.add(` is in `repository.py`, the only `commit()` is in
+  `db.py:26`, `fetch(` appears only in `api/client.ts`, `api/client` is imported only by
+  `useTodos.ts`, the 200 bound is defined once per side, and no hex literal appears outside
+  `tokens.css`.
+- Curls against a live backend: trimming, 1- and 200-character acceptance, and empty, whitespace,
+  201-character, `{}` and non-JSON rejection all answer as the matrix requires, with no stack trace,
+  SQL or request echo in any body and no `userId` in any response.
+- Matrix audit: all nine I/O rows are covered by tests that ran and passed in the above.
+
+**Residual risks**
+
+- The four deferred items above, of which the owner-stamping gap and the untested merge are the two
+  that a future change could silently break.
+- The E2E journeys reset through `docker compose exec`, not the API, because `DELETE` does not exist
+  until story 1.4. The epic's table describes the API route; it becomes available next story.
