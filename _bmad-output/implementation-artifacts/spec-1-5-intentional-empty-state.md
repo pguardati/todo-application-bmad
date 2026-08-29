@@ -2,14 +2,39 @@
 title: 'Story 1.5 — Intentional Empty State'
 type: 'feature'
 created: '2026-08-29'
-status: 'in-review' # draft | ready-for-dev | in-progress | in-review | done | blocked
+status: 'done' # draft | ready-for-dev | in-progress | in-review | done | blocked
 baseline_revision: '1a5666c3bf73c40f530b7bc23afdccced7105b98'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
 warnings: [oversized]
-deferred: []
+deferred:
+  - summary: >-
+      No Playwright journey in the suite carries an axe-core assertion, so the epic's
+      "one journey per slice with axe-core accessibility assertions" holds only through
+      the per-story QA reports, which `make ci` never re-runs.
+    evidence: |-
+      `@axe-core/playwright` 4.13.0 is a declared e2e dependency but is imported by no spec
+      in `e2e/tests/`. Story 1.5's accessibility PASS rests on a one-off scan recorded in
+      `qa/story-1.5.md`. This predates story 1.5 — journeys from 1.2, 1.3 and 1.4 have the
+      same shape — and the epic's Story 1.5 test table does not list an axe assertion, so
+      adding one here would exceed the story's test scope while leaving the other three
+      journeys unpinned. It is a suite-wide decision.
+    location: >-
+      e2e/tests/
+    severity: low
+  - summary: >-
+      A completed row's label renders --color-text-done #555555 on #000000 at 2.81:1, under the
+      4.5:1 WCAG AA bar.
+    evidence: |-
+      Carried forward from story 1.4's deferred list so the accepted debt stays on the record.
+      Story 1.5's axe-core scan is clean only because an empty board renders no completed rows;
+      the token is untouched by this story. Token-level and owned by UX, and the epic makes AA a
+      stretch goal rather than a gate.
+    location: >-
+      frontend/src/styles/tokens.css
+    severity: low
 ---
 
 <intent-contract>
@@ -151,6 +176,58 @@ Frontend (under `frontend/`):
 
 ## Review Triage Log
 
+### 2026-08-29 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 7: (high 0, medium 3, low 4)
+- defer: 2: (high 0, medium 0, low 2)
+- reject: 14: (high 0, medium 0, low 14)
+- addressed_findings:
+  - `[medium]` `[patch]` The "no empty-state copy" guard read only `textContent`, so an
+    illustration was invisible to it: inserting an `<img alt="Nothing to do yet">` into
+    `TodoColumn` left all 25 frontend tests green while shipping screen-reader-visible copy.
+    `expectsEmptyBoard()` and the E2E journey now also assert no `img`/`svg` under `main` and
+    that each empty column's element children are exactly `h2` + empty `ul`; mutation-verified
+    (the same mutation now fails 2 cases).
+  - `[medium]` `[patch]` `TodoRow.moveFocusOut`'s fallback to the add-bar input is reachable
+    only when the deleted row has no neighbour — deleting the last todo — which is precisely
+    the "the add bar holds focus" guarantee this story claims, and nothing asserted it. The
+    focus check moved into `expectsEmptyBoard()` so it runs after the last delete too;
+    mutation-verified by removing the `moveFocusOut` call.
+  - `[medium]` `[patch]` `sprint-status.yaml` still read `1-5-intentional-empty-state: backlog`
+    while 1.1-1.4 all read `review`, leaving the tracker disagreeing with a finished story.
+    Set to `review` with `last_updated` refreshed.
+  - `[low]` `[patch]` The E2E layout assertions located columns by `.column` class and relied on
+    DOM index for "TODO first", skipped a length check so the 320px `every(...)` could pass
+    vacuously, compared bounding-box floats with exact equality, and read boxes without awaiting
+    relayout after `setViewportSize`. Boxes now come from the role-named lists, the array is a
+    fixed 2-tuple, comparison uses `toBeCloseTo`, and each resize is followed by an `expect.poll`.
+  - `[low]` `[patch]` The return-to-empty case awaited the `deleteTodo` mock rather than the DOM,
+    so the post-resolution `setError(null)` could land after the assertions; it now waits for the
+    list to reach zero rows. The document-scoped deep-equality button assertion was replaced with
+    a `within(main)` check on accessible names.
+  - `[low]` `[patch]` The change-surface command enumerated `frontend/src/{components,hooks,api,styles}`,
+    excluding `App.tsx` and `main.tsx` — the very composition under test — so it could not support the
+    "zero production-code changes" claim it was cited for. Widened to `frontend/src` with test files
+    excluded, in both the spec and the QA report, and re-run.
+  - `[low]` `[patch]` `qa/story-1.5.md` claimed "every file this story exercises reports 100% lines"
+    two sentences before reporting `useTodos.ts` at 95.83%, and credited the return-to-empty case with
+    covering `setError(null)`, which it never exercises. Both corrected.
+
+Deferred: the suite-wide absence of axe-core assertions in the Playwright journeys, and the
+carried-over `--color-text-done` contrast token.
+
+Rejected as noise or out of scope on the intent's authority: a delete-then-list backend case and a
+half-empty-board case (the epic's Story 1.5 table fixes the test scope at one backend row, two
+frontend rows and one journey), restoring the empty-list prelude to the newest-first test (each test
+gets a fresh temp database), a `.get()` guard on the `content-type` header, docker-availability
+guards and a shared reset helper for the `py(CLEAR)` harness (pre-existing conventions from 1.2-1.4,
+already rejected in 1.4), a unique E2E description string, an `act()`-safety rename of
+`expectsEmptyBoard`, hoisting the `+TODODONE` regex into a constant shared across two test runners,
+an empty-vs-error case on a failed cold load (story 1.6's surface), redundant `role=status`/`role=alert`
+E2E assertions (the exact-text match already excludes them), a server-persistence assertion on the
+first add (covered by the create journey's reload), and an explanation of the `oversized` warning.
+
 ## Design Notes
 
 **Why this slice is mostly assertions.** The empty board is the 1.2 composition with two empty
@@ -188,3 +265,58 @@ todo it adds is removed by its own `afterAll`.
   `main.tsx` are covered -- expected: empty, or a single justified change named in the PR.
 - `curl -s -i localhost:8000/api/todos` against an empty database -- expected: `200`,
   `content-type: application/json`, body exactly `[]`, no count header, no wrapper.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented change**
+
+Story 1.5 landed as an assertions-only slice, exactly as the epic's test table predicts: the empty
+board is the 1.2 composition with two empty lists, and UX-DR6/DR7 forbid the copy a naive empty state
+would add, so the story's deliverable is that the presentation stops being an accident. `GET /api/todos`
+on an empty table now has its own integration test for the bare-`[]` contract instead of a prelude
+inside the ordering test; the frontend pins the cold empty open and the return-to-empty after the last
+delete — both columns labelled with zero rows, no loading or alert remnant, the add bar holding focus,
+and no non-text content sneaking in; and one Playwright journey exercises the same board in a real
+browser at 1280px and 320px before adding the first todo. Zero production files changed: the E2E box
+assertions passed against `.columns` as it stands, so no layout fix was warranted.
+
+**Files changed**
+
+- `backend/tests/test_todos_api.py` — `test_list_on_an_empty_table_returns_a_bare_empty_array` (200, JSON content type, body exactly `[]`); the ordering test now asserts ordering only.
+- `frontend/src/App.test.tsx` — `describe('the empty board')`: cold open and return-to-empty, sharing an `expectsEmptyBoard()` that checks labels, zero rows, no status/alert, exact rendered text, no `img`/`svg`, structural column children, and add-bar focus.
+- `e2e/tests/empty-state.spec.ts` — the single new journey, self-resetting through the same `py(CLEAR)` docker-exec helper, with role-derived column geometry at both viewports and a first add that leaves DONE empty.
+- `qa/story-1.5.md` — the five agentic checks with evidence.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — story 1.5 moved to `review`.
+
+**Review findings**
+
+Patches applied: 7 (medium 3, low 4). Deferred: 2 (low 2) — the suite-wide absence of axe-core
+assertions in the Playwright journeys, and the carried-over `--color-text-done` contrast token.
+Rejected: 14, all low.
+
+Follow-up review recommended: **true** — patched severities were 0 high, 3 medium, 4 low, scoring
+3 x 3 + 1 x 4 = 13, at or above the threshold of 5.
+
+**Verification**
+
+`make ci` exits 0 after the patches: Ruff check and format clean, `tsc --noEmit` clean, backend 39
+passed with coverage 99% (212 statements, 2 missed), frontend 25 passed with 93.91% lines, and all
+four Playwright journeys green against the `test` profile, torn down with `--volumes`. The widened
+change-surface command
+(`git diff --stat 1a5666c -- backend/app frontend/src ':(exclude)*.test.tsx' ':(exclude)frontend/src/setupTests.ts'`)
+returns nothing, so the zero-production-change claim is measured rather than asserted. Every I/O matrix
+row is covered by a test that ran and passed. The two behavioural patches were mutation-verified: the
+`img` empty-state mutation and the removal of `moveFocusOut` each fail two cases and were reverted.
+
+**Residual risks**
+
+- The empty board's accessibility is verified by a one-off axe-core scan recorded in the QA report, not
+  by anything `make ci` re-runs — see the first deferred item.
+- The layout criterion is pinned in a real browser only; the two frontend cases run in jsdom with no
+  stylesheet, so they observe structure and focus but not geometry.
+- The story is committed on `story-1.5-intentional-empty-state` but not pushed, and no stacked PR
+  against `story-1.4-complete-and-delete-a-todo` has been opened — the epic's Definition of Done is
+  therefore not fully met, and publishing is left as an explicit human step.
