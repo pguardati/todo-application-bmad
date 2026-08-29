@@ -50,6 +50,8 @@ test('a failed load surfaces a message and a retry that recovers the board', asy
   await expect(page.getByRole('heading', { name: 'DONE' })).toBeVisible()
   await expect(todo).toHaveCount(1)
   await expect(done).toHaveCount(1)
+  await expect(todo.getByRole('listitem')).toHaveCount(0)
+  await expect(done.getByRole('listitem')).toHaveCount(0)
   await expect(page.getByRole('status')).toHaveCount(0)
 
   await retry.focus()

@@ -125,6 +125,45 @@ async def test_unhandled_error_returns_generic_500_and_rolls_back(
         assert session.exec(select(Todo)).all() == []
 
 
+LEAK_TOKENS = (
+    "Traceback",
+    "RuntimeError",
+    "SELECT",
+    "todo",
+    "owner",
+    "/srv/app",
+    "repository.py",
+    "sqlmodel",
+    "8675309",
+    'File "',
+)
+
+
+def assert_generic_500_body(response) -> None:
+    assert response.status_code == 500
+
+    payload = response.json()
+    assert set(payload) == {"error", "message"}
+    assert payload["error"] == "INTERNAL_ERROR"
+
+    for leaked in LEAK_TOKENS:
+        assert leaked not in response.text, f"the 500 body leaked {leaked!r}: {response.text}"
+
+
+def assert_exception_was_logged(caplog: pytest.LogCaptureFixture, path: str) -> str:
+    import logging
+
+    records = [r for r in caplog.records if r.name == "app.main" and r.levelno == logging.ERROR]
+    assert records, f"app.main logged no ERROR record; saw {[r.name for r in caplog.records]}"
+
+    record = records[0]
+    assert record.exc_info is not None, "the handler logged no exception detail"
+
+    detail = record.getMessage() + "\n" + logging.Formatter().formatException(record.exc_info)
+    assert path in detail
+    return detail
+
+
 @pytest.mark.asyncio
 async def test_forced_500_leaks_nothing_while_the_log_keeps_the_detail(
     error_client: AsyncClient, caplog: pytest.LogCaptureFixture
@@ -135,30 +174,43 @@ async def test_forced_500_leaks_nothing_while_the_log_keeps_the_detail(
         async with error_client as http:
             response = await http.post("/api/probe/leak", json={"count": 8675309})
 
-    assert response.status_code == 500
-    assert response.json() == {"error": "INTERNAL_ERROR", "message": "Internal server error"}
-    assert set(response.json()) == {"error", "message"}
+    assert_generic_500_body(response)
 
-    body = response.text
-    for leaked in (
-        "Traceback",
-        "RuntimeError",
-        "SELECT",
-        "todo",
-        "/srv/app",
-        "repository.py",
-        "sqlmodel",
-        "8675309",
-        "probe",
-    ):
-        assert leaked not in body
-
-    record = next(r for r in caplog.records if r.levelno == logging.ERROR)
-    assert record.exc_info is not None
-    detail = record.getMessage() + "\n" + logging.Formatter().formatException(record.exc_info)
+    detail = assert_exception_was_logged(caplog, "/api/probe/leak")
     assert "RuntimeError" in detail
     assert "SELECT id FROM todo" in detail
-    assert "/api/probe/leak" in detail
+    assert "8675309" in detail
+
+
+@pytest.mark.asyncio
+async def test_a_failing_service_on_a_real_route_answers_the_generic_envelope(
+    engine, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    from httpx import ASGITransport
+
+    import app.routers.todos as todos_router
+    from app.main import app as shipped_app
+
+    def boom(session, owner):
+        raise RuntimeError(
+            "SELECT id, description, owner FROM todo -- /srv/app/repository.py:42 sqlmodel 0.0.31"
+        )
+
+    monkeypatch.setattr(todos_router, "list_todos", boom)
+
+    transport = ASGITransport(app=shipped_app, raise_app_exceptions=False)
+    with caplog.at_level(logging.ERROR, logger="app.main"):
+        async with AsyncClient(transport=transport, base_url="http://test") as http:
+            response = await http.get("/api/todos")
+
+    assert_generic_500_body(response)
+    assert response.json()["message"] == "Internal server error"
+
+    detail = assert_exception_was_logged(caplog, "/api/todos")
+    assert "RuntimeError" in detail
+    assert "SELECT id, description, owner FROM todo" in detail
 
 
 def test_current_scope_is_unset_in_v1() -> None:

@@ -9,7 +9,31 @@ followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
 warnings: [oversized]
-deferred: []
+deferred:
+  - summary: >-
+      An optimistic create still in flight during a retry can render alongside its persisted twin.
+    evidence: |-
+      load() rebuilds the list as [...current.filter((row) => row.pending), ...loaded]. If the create
+      has committed server-side but its response has not settled, the retry's response already carries
+      the persisted row while the pending row is kept by the filter, so the same todo shows twice until
+      the create settles and replaces the temp row. Narrow — it needs a retry activated inside the
+      window of an in-flight create — and it predates this story in shape; the retry path is what makes
+      it reachable at all.
+    location: >-
+      frontend/src/hooks/useTodos.ts
+    severity: low
+  - summary: >-
+      Keyboard focus drops to `<body>` when the retry button disables mid-flight, and again when the
+      alert unmounts on a successful recovery.
+    evidence: |-
+      `disabled={loading}` removes the focused element from the tab order while the load is in flight,
+      and on success the whole alert unmounts, so a keyboard user is stranded twice. The epic's a11y
+      AC asks only that the message be announced and retry be Enter-operable, both of which hold, and
+      no AC or UX decision states where focus should land afterwards. `aria-disabled` plus a no-op
+      handler, or a deliberate focus move to the add bar, would resolve it.
+    location: >-
+      frontend/src/App.tsx
+    severity: low
 ---
 
 <intent-contract>
@@ -85,7 +109,10 @@ that intercepts `/api/todos`, and the agentic QA report.
 Backend (under `backend/`):
 - `app/errors.py:1-17` -- the whole hierarchy: `AppError` (500/`INTERNAL_ERROR`), `NotFoundError`
   (404/`NOT_FOUND`), `ValidationError` (400/`VALIDATION_ERROR`). Read-only; the new unit test walks
-  `AppError.__subclasses__()` so a future subclass without a mapping fails the test.
+  `AppError.__subclasses__()` so a future subclass without a mapping fails the test. `__subclasses__()`
+  only sees classes whose module has been imported, so the test imports `app.main` to force the whole
+  shipped module graph to register -- a subclass defined in a module the app never imports is out of
+  its reach by construction.
 - `app/main.py:39-67` -- the three registered handlers (`AppError`, `RequestValidationError` → 400,
   bare `Exception` → generic 500 with `logger.exception`). Read-only: the AD-4 contract already
   holds; this story pins it.
@@ -192,6 +219,65 @@ Frontend (under `frontend/`):
 
 ## Review Triage Log
 
+### 2026-08-29 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 15: (high 0, medium 4, low 11)
+- defer: 2: (high 0, medium 0, low 2)
+- reject: 12: (high 0, medium 0, low 12)
+- addressed_findings:
+  - `[medium]` `[patch]` The "exactly one fetch per activation" invariant lived only in
+    `disabled={loading}` and was asserted nowhere — deleting that prop left the whole suite green.
+    `load()` gained its own in-flight guard (it is public API through `retry`) plus a component case
+    that holds the promise open, clicks twice and pins the call count.
+  - `[medium]` `[patch]` Activating Retry with rows on screen unmounted both columns — the board
+    blanked mid-retry and `alert` + `status` were live at once, contradicting the story's own "the
+    list area is not blank or broken". The loading line now renders only when there is no error, and
+    a mutation-failure case activates Retry with rows present.
+  - `[medium]` `[patch]` The forced-500 row was exercised only against a fixture-local probe app,
+    while the epic's row names a forced *service* failure. Added a case that forces the real service
+    to raise and drives `GET /api/todos` on the shipped app.
+  - `[medium]` `[patch]` The QA performance check reported `goto` → alert (148 ms) as a PASS against
+    a budget stated as "within 100 ms of the failed response" — a different quantity, and larger than
+    the budget. Re-measured against the quantity the AC names.
+  - `[low]` `[patch]` The `active`-closure → `mounted`-ref rewrite was unverified: deleting all three
+    guards left the suite green. Added an unmount-while-pending case.
+  - `[low]` `[patch]` `test_subclasses_do_not_share_a_status_or_a_code` read only its own literal and
+    passed even with `app/errors.py` deleted; the sets are now derived from the classes.
+  - `[low]` `[patch]` `__subclasses__()` only sees imported modules, so the exhaustiveness claim was
+    import-order dependent. The test now imports `app.main`, and the overstated claim was corrected.
+  - `[low]` `[patch]` The caplog record was selected by level alone, raising `StopIteration` instead
+    of failing readably; it now filters by logger name after a non-empty assertion.
+  - `[low]` `[patch]` The exact-equality body assert made the key-set check and nine-substring leak
+    loop unable to fail independently, yet the QA report presented the loop as the leakage evidence.
+  - `[low]` `[patch]` The alert's text content was the run-on string `Internal server errorRetry`;
+    the message is now its own element.
+  - `[low]` `[patch]` The E2E error state never asserted zero rows — `toHaveCount(1)` on the list
+    element is uniqueness, not a row count.
+  - `[low]` `[patch]` The new `.state-line-error` flex row had no `flex-wrap` / `min-width: 0` for a
+    long message at a narrow viewport.
+  - `[low]` `[patch]` The QA report's change-surface block was hand-written text under a
+    `$ git diff --stat` prompt.
+  - `[low]` `[patch]` These Design Notes sketched `load` as `.then/.catch/.finally` while the shipped
+    code is `async/await` with a `mounted` ref.
+  - `[low]` `[patch]` The PR body carried no Ad-hoc manual-check section, which the epic's test
+    taxonomy defines as "Manual, documented in the PR".
+
+Deferred: an optimistic row still in flight during a retry can render alongside its persisted twin;
+and keyboard focus drops to `<body>` both when the retry button disables mid-flight and when the
+alert unmounts on success.
+
+Rejected as noise or out of scope on the intent's authority: the Retry control appearing on
+mutation-failure alerts (it re-syncs the board and clears the error, satisfying the epic's
+"dismissible or self-clearing" AC, and no AC forbids it), the E2E journey fabricating its responses
+with `page.route` (the epic's own E2E row prescribes intercepting `/api/todos`), the claim that the
+leak assertions cannot fail (mutation-proven by returning `str(exc)`), the bare `button` type
+selector and the `--radius-sm: 0px` no-op, the empty `## Spec Change Log` heading and the `oversized`
+warning flag, a generation counter or `AbortController` beyond the in-flight guard, widening the
+`page.route` glob to mutation URLs (the journey performs none), a constructor-arity guard for a
+hypothetical subclass (a `TypeError` is already a failure signal), case-folding the leak scan,
+`setError(null)` on the mount load, and an unmounted-`retry()` guard subsumed by the in-flight guard.
+
 ## Design Notes
 
 **Most of the backend contract already exists.** Story 1.1 registered all three handlers and 1.3/1.4
@@ -204,16 +290,30 @@ loader, so retry reuses the same `active`-guarded promise chain as the mount eff
 stale `loading` behind. Shape:
 
 ```ts
-const load = useCallback(() => {
+const mounted = useRef(true)
+const inFlight = useRef<Promise<void> | null>(null)
+
+const load = useCallback((): Promise<void> => {
+  if (inFlight.current !== null) {
+    return inFlight.current
+  }
   setLoading(true)
-  return listTodos()
-    .then((loaded) => { setTodos(...); setError(null) })
-    .catch((caught: unknown) => setError(messageOf(caught)))
-    .finally(() => setLoading(false))
+  const run = listTodos()
+    .then((loaded) => { if (mounted.current) { setTodos(...); setError(null) } })
+    .catch((caught: unknown) => { if (mounted.current) setError(messageOf(caught)) })
+    .finally(() => {
+      inFlight.current = null
+      if (mounted.current) setLoading(false)
+    })
+  inFlight.current = run
+  return run
 }, [])
 ```
 
-The mount effect keeps its own `active` flag for unmount safety; `retry` is `load` exposed.
+Unmount safety moves from the effect's local `active` flag to a `mounted` ref, because `retry` is
+called from outside the effect and cannot close over it. The `inFlight` ref is what makes "exactly one
+fetch per activation" a property of the hook rather than of the button's `disabled` attribute: a
+re-entrant `retry()` returns the promise already running. `retry` is `load` exposed.
 
 **Why a button inside the alert, not a separate control.** `role="alert"` is an ARIA live region, so
 the message is announced on appearance; putting the button inside it keeps message and remedy in one

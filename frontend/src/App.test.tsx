@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -147,6 +147,45 @@ describe('App', () => {
       'Buy groceries×',
     ])
     expect(labels(screen.getByRole('list', { name: 'DONE' }))).toEqual(['Morning standup×'])
+  })
+
+  it('issues no second fetch while a retry is still in flight', async () => {
+    const user = userEvent.setup()
+    let settle: (todos: Todo[]) => void = () => {}
+    vi.mocked(listTodos)
+      .mockRejectedValueOnce(new ApiRequestError('Internal server error', 'INTERNAL_ERROR'))
+      .mockReturnValueOnce(
+        new Promise<Todo[]>((resolve) => {
+          settle = resolve
+        }),
+      )
+
+    render(<App />)
+    await screen.findByRole('alert')
+    expect(listTodos).toHaveBeenCalledTimes(1)
+
+    const retry = screen.getByRole('button', { name: 'Retry' })
+    await user.click(retry)
+
+    expect(listTodos).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(retry).toBeDisabled())
+
+    await user.click(retry)
+    await user.click(retry)
+
+    expect(listTodos).toHaveBeenCalledTimes(2)
+
+    await act(async () => {
+      settle(rows)
+    })
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+    expect(listTodos).toHaveBeenCalledTimes(2)
+    expect(labels(screen.getByRole('list', { name: 'TODO' }))).toEqual([
+      'Fix the auth bug×',
+      'Buy groceries×',
+    ])
   })
 })
 
@@ -370,6 +409,29 @@ describe('completing and deleting a todo', () => {
     expect(labels(todo())).toEqual(['Fix the auth bug×', 'Buy groceries×'])
     expect(labels(done())).toEqual(['Morning standup×'])
     expect(listTodos).toHaveBeenCalledTimes(1)
+
+    let settle: (todos: Todo[]) => void = () => {}
+    vi.mocked(listTodos).mockReturnValueOnce(
+      new Promise<Todo[]>((resolve) => {
+        settle = resolve
+      }),
+    )
+    await user.click(within(alert).getByRole('button', { name: 'Retry' }))
+
+    expect(listTodos).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(labels(todo())).toEqual(['Fix the auth bug×', 'Buy groceries×'])
+    expect(labels(done())).toEqual(['Morning standup×'])
+
+    await act(async () => {
+      settle(rows)
+    })
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(labels(todo())).toEqual(['Fix the auth bug×', 'Buy groceries×'])
+    expect(labels(done())).toEqual(['Morning standup×'])
 
     vi.mocked(deleteTodo).mockResolvedValue(undefined)
     await user.click(within(todo()).getAllByRole('button', { name: 'Delete' })[0]!)

@@ -12,14 +12,14 @@ export default function App() {
 
       {error && (
         <div className="state-line state-line-error" role="alert">
-          {error}
+          <span>{error}</span>
           <button type="button" onClick={() => void retry()} disabled={loading}>
             Retry
           </button>
         </div>
       )}
 
-      {loading ? (
+      {loading && !error ? (
         <p className="state-line" role="status">
           Loading…
         </p>

@@ -49,23 +49,35 @@ export function useTodos(): UseTodos {
     }
   }, [])
 
-  const load = useCallback(async (): Promise<void> => {
-    setLoading(true)
-    try {
-      const loaded = await listTodos()
-      if (mounted.current) {
-        setTodos((current) => [...current.filter((row) => row.pending), ...loaded])
-        setError(null)
-      }
-    } catch (caught: unknown) {
-      if (mounted.current) {
-        setError(messageOf(caught))
-      }
-    } finally {
-      if (mounted.current) {
-        setLoading(false)
-      }
+  const inFlight = useRef<Promise<void> | null>(null)
+
+  const load = useCallback((): Promise<void> => {
+    if (inFlight.current !== null) {
+      return inFlight.current
     }
+
+    setLoading(true)
+    const run = listTodos()
+      .then((loaded) => {
+        if (mounted.current) {
+          setTodos((current) => [...current.filter((row) => row.pending), ...loaded])
+          setError(null)
+        }
+      })
+      .catch((caught: unknown) => {
+        if (mounted.current) {
+          setError(messageOf(caught))
+        }
+      })
+      .finally(() => {
+        inFlight.current = null
+        if (mounted.current) {
+          setLoading(false)
+        }
+      })
+
+    inFlight.current = run
+    return run
   }, [])
 
   useEffect(() => {
