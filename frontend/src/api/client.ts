@@ -51,3 +51,14 @@ export function listTodos(): Promise<Todo[]> {
 export function createTodo(description: string): Promise<Todo> {
   return request<Todo>('/todos', { method: 'POST', body: JSON.stringify({ description }) })
 }
+
+export function updateTodo(id: string, completed: boolean): Promise<Todo> {
+  return request<Todo>(`/todos/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ completed }),
+  })
+}
+
+export function deleteTodo(id: string): Promise<void> {
+  return request<void>(`/todos/${id}`, { method: 'DELETE' })
+}
