@@ -24,12 +24,17 @@ def seed(engine) -> None:
         session.commit()
 
 
-async def test_list_returns_a_bare_array_newest_first(client: AsyncClient, engine) -> None:
-    empty = await client.get("/api/todos")
-    assert empty.status_code == 200
-    assert empty.json() == []
+async def test_list_on_an_empty_table_returns_a_bare_empty_array(client: AsyncClient) -> None:
+    response = await client.get("/api/todos")
 
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json() == []
+
+
+async def test_list_returns_a_bare_array_newest_first(client: AsyncClient, engine) -> None:
     seed(engine)
+
     response = await client.get("/api/todos")
 
     assert response.status_code == 200

@@ -361,3 +361,43 @@ describe('completing and deleting a todo', () => {
     expect(labels(done())).toEqual(['Morning standup×', 'Buy groceries×'])
   })
 })
+
+describe('the empty board', () => {
+  const expectsEmptyBoard = () => {
+    expect(screen.getByRole('heading', { name: 'TODO' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'DONE' })).toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: 'TODO' })).queryAllByRole('listitem')).toHaveLength(0)
+    expect(within(screen.getByRole('list', { name: 'DONE' })).queryAllByRole('listitem')).toHaveLength(0)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('main')).toHaveTextContent(/^\s*\+\s*TODO\s*DONE\s*$/)
+  }
+
+  it('renders both labelled columns with no rows and no empty-state copy on a cold open', async () => {
+    vi.mocked(listTodos).mockResolvedValue([])
+
+    render(<App />)
+
+    await screen.findByRole('list', { name: 'TODO' })
+    expectsEmptyBoard()
+
+    const input = screen.getByRole('textbox', { name: 'New todo' })
+    expect(input).toBe(document.activeElement)
+    expect(screen.getAllByRole('button')).toEqual([screen.getByRole('button', { name: 'Add todo' })])
+  })
+
+  it('returns to that same board when the last todo is deleted', async () => {
+    const user = userEvent.setup()
+    const only = rows[0]!
+    vi.mocked(listTodos).mockResolvedValue([only])
+    vi.mocked(deleteTodo).mockResolvedValue(undefined)
+
+    render(<App />)
+    await screen.findByRole('list', { name: 'TODO' })
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => expect(vi.mocked(deleteTodo)).toHaveBeenCalledWith(only.id))
+    expectsEmptyBoard()
+  })
+})
