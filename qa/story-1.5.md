@@ -73,14 +73,20 @@ The empty branch specifically:
 | --- | --- |
 | `repository.list_todos` returning no rows → `[]` on the wire | `test_list_on_an_empty_table_returns_a_bare_empty_array` (status 200, `content-type: application/json`, body exactly `[]`) |
 | `useTodos` partitioning an empty list into `active: []` / `completed: []` | `the empty board › renders both labelled columns with no rows and no empty-state copy on a cold open` |
-| `TodoColumn` rendering `h2` + empty `ul` with zero todos | same test, both columns |
-| `useTodos.deleteTodo` clearing `error` on the last row's confirmed delete | `the empty board › returns to that same board when the last todo is deleted` |
+| `TodoColumn` rendering `h2` + empty `ul` with zero todos, and nothing else | same test — both columns are asserted to have exactly the element children `[H2, UL]` |
+| `useTodos.deleteTodo` removing the last remaining row and the board settling back to the empty rendering | `the empty board › returns to that same board when the last todo is deleted` |
+| `TodoRow.moveFocusOut`'s no-neighbour fallback to the add-bar input | same test — the focus assertion is the only case in the suite that deletes a row with no sibling |
 
-Per-file, every file this story exercises reports 100% lines — `App.tsx`, `components/AddBar.tsx`,
-`components/TodoColumn.tsx` and `components/TodoRow.tsx` do not appear in the uncovered-lines table
-at all. `useTodos.ts` stays at 95.83% (lines 115, 138, 147 — the three "nothing to do" early
-returns) and `api/client.ts` at 81.81% (the four stubbed one-liners, covered end to end by the
-Playwright journeys); both are unchanged from 1.4.
+`useTodos.deleteTodo`'s `setError(null)` is *not* attributed here: the return-to-empty case never
+enters an error state, and removing that line fails only the pre-existing rollback case
+(`re-inserts the deleted row at its original index and surfaces the message`).
+
+Per-file, the files this story exercises that report **100% lines** are `App.tsx`,
+`components/AddBar.tsx`, `components/TodoColumn.tsx` and `components/TodoRow.tsx` — none of them
+appears in the uncovered-lines table. The two files that do are unchanged from 1.4:
+`useTodos.ts` at 95.83% (lines 115, 138, 147 — the three "nothing to do" early returns) and
+`api/client.ts` at 81.81% (the four stubbed one-liners, covered end to end by the Playwright
+journeys).
 
 ## 3. Accessibility — axe-core on the empty board plus focus placement (UX-DR3, UX-DR6, NFR-4)
 
@@ -105,7 +111,9 @@ board renders no rows, so it does not arise here. A second scan taken after the 
 ```
 
 The focused input is the empty board's only affordance (UX-DR3), and it is reached without user
-action. The complete set of interactive controls under `main` on the empty board is:
+action — asserted both on the cold open and after the last row is deleted, which is the only path
+through `TodoRow.moveFocusOut`'s no-neighbour fallback. The complete set of interactive controls
+under `main` on the empty board is:
 
 ```json
 ["BUTTON:Add todo", "INPUT:New todo"]
@@ -123,10 +131,19 @@ is the only interactive control besides `Add todo`. Both section labels remain e
 ```
 
 That is the `+` button plus the two section labels and nothing else — no onboarding sentence, no
-illustration caption, no count, no "0 items" hint (UX-DR6/DR7). This is asserted in three places:
-`App.test.tsx` (`toHaveTextContent(/^\s*\+\s*TODO\s*DONE\s*$/)`, in both the cold-open and the
-return-to-empty cases) and `e2e/tests/empty-state.spec.ts` (`toHaveText` with the same pattern), so
-any future empty-state string fails the suite without needing a list of forbidden phrases.
+illustration caption, no count, no "0 items" hint (UX-DR6/DR7).
+
+The guard is both textual and structural, in both suites: the whole-region text pattern
+(`/^\s*\+\s*TODO\s*DONE\s*$/`), a count of zero `img`/`svg`/`picture`/`canvas` under `main`, and an
+assertion that each empty `section.column` has exactly the element children `[H2, UL]` — so a
+wordless illustration or a placeholder row is caught as surely as a sentence is.
+
+**Mutation-proven.** Inserting `{todos.length === 0 && <img src="/empty.svg" alt="Nothing to do
+yet" />}` above the `ul` in `TodoColumn` leaves the text-only guard green but fails both empty-board
+cases against the structural guard (`2 failed | 23 passed`); the mutation was then reverted.
+Separately, deleting the `moveFocusOut(event.currentTarget)` call from `TodoRow` fails the
+return-to-empty focus assertion together with the 1.4 neighbour-focus case (`2 failed | 23 passed`),
+confirming the focus assertion is load-bearing and not incidentally satisfied.
 
 ## 4. Security — the empty response leaks no schema or count metadata (AD-4, NFR-6)
 
@@ -188,7 +205,7 @@ Behaviour observed:
 | Cold open on an empty table | Both `TODO` and `DONE` headings and both empty lists render; no `role="status"` remnant, no `role="alert"` |
 | Focus | `New todo` input focused with no click |
 | Rendered copy | `+TODODONE` and nothing else |
-| Layout at 1280px | Two columns side by side: `{x:88,y:144,w:520,h:624}` and `{x:672,y:144,w:520,h:624}` — same `y`, second `x` greater, both non-zero |
+| Layout at 1280px | Two columns side by side (boxes taken from each role-named list's ancestor `section`, so "TODO first" is verified by name, not DOM index): `{x:88,y:144,w:520,h:624}` and `{x:672,y:144,w:520,h:624}` — same `y`, second `x` greater, both non-zero |
 | Layout at 320px | Stacked, TODO first: `{x:24,y:136,w:272,h:304}` then `{x:24,y:472,w:272,h:304}` — same `x`, second `y` greater, neither collapsed |
 | First add from empty | `Water the plants` becomes the single TODO row in 20–32 ms; DONE stays empty and keeps its label |
 | Return to empty (delete of the last row) | Covered in jsdom by the second frontend case, and end to end by `complete-and-delete.spec.ts`, which deletes the only todo and reloads onto zero rows in both columns |
@@ -202,10 +219,14 @@ green with the compose profile torn down with `--volumes`.
 ## Change surface
 
 ```
-$ git diff --stat <baseline> -- backend/app frontend/src/components frontend/src/hooks \
-    frontend/src/api frontend/src/styles
-(empty)
+$ git diff --stat 1a5666c -- backend/app frontend/src \
+    ':(exclude)*.test.tsx' ':(exclude)frontend/src/setupTests.ts'
+(no output)
 ```
+
+The pathspec is the whole production surface of both sides with only the test files excluded, so it
+covers `frontend/src/App.tsx` and `frontend/src/main.tsx` as well as `components/`, `hooks/`,
+`api/` and `styles/`.
 
 No production file changed. The story is assertions only: `backend/tests/test_todos_api.py`
 (empty-list contract extracted into its own test, the prelude dropped from the newest-first test),

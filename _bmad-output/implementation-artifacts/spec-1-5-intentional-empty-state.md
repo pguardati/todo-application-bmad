@@ -2,7 +2,7 @@
 title: 'Story 1.5 — Intentional Empty State'
 type: 'feature'
 created: '2026-08-29'
-status: 'in-progress' # draft | ready-for-dev | in-progress | in-review | done | blocked
+status: 'in-review' # draft | ready-for-dev | in-progress | in-review | done | blocked
 baseline_revision: '1a5666c3bf73c40f530b7bc23afdccced7105b98'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -183,7 +183,8 @@ todo it adds is removed by its own `afterAll`.
 - `make test-frontend` -- expected: the two new empty-board cases pass; line coverage ≥70%.
 - `make test-e2e` -- expected: all four journeys pass and the profile is torn down.
 - `make ci` -- expected: the full chain is green.
-- `git diff --stat 1a5666c3bf73c40f530b7bc23afdccced7105b98 -- backend/app frontend/src/components frontend/src/hooks frontend/src/api`
-  -- expected: empty, or a single justified change named in the PR.
+- `git diff --stat 1a5666c3bf73c40f530b7bc23afdccced7105b98 -- backend/app frontend/src ':(exclude)*.test.tsx' ':(exclude)frontend/src/setupTests.ts'`
+  -- the whole production surface of both sides with the test files excluded, so `App.tsx` and
+  `main.tsx` are covered -- expected: empty, or a single justified change named in the PR.
 - `curl -s -i localhost:8000/api/todos` against an empty database -- expected: `200`,
   `content-type: application/json`, body exactly `[]`, no count header, no wrapper.

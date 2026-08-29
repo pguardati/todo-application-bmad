@@ -40,33 +40,59 @@ test('an empty board keeps both labelled columns and no empty-state copy', async
   await expect(todo.getByRole('listitem')).toHaveCount(0)
   await expect(done.getByRole('listitem')).toHaveCount(0)
   await expect(page.getByRole('main')).toHaveText(/^\s*\+\s*TODO\s*DONE\s*$/)
+  await expect(page.locator('main img, main svg, main picture, main canvas')).toHaveCount(0)
   await expect(page.getByRole('textbox', { name: 'New todo' })).toBeFocused()
 
-  const columns = page.locator('.column')
-  const wide = await columns.evaluateAll((nodes) =>
-    nodes.map((node) => node.getBoundingClientRect()).map(({ x, y, width, height }) => ({ x, y, width, height })),
-  )
-  expect(wide).toHaveLength(2)
-  expect(wide.every(({ width, height }) => width > 0 && height > 0)).toBe(true)
-  expect(wide[1]!.x).toBeGreaterThan(wide[0]!.x)
-  expect(wide[1]!.y).toBe(wide[0]!.y)
+  for (const list of [todo, done]) {
+    const children = await list
+      .locator('xpath=ancestor::section[1]')
+      .evaluate((section) => [...section.children].map((child) => child.tagName))
+    expect(children).toEqual(['H2', 'UL'])
+    await expect(list.locator('xpath=*')).toHaveCount(0)
+  }
 
-  await page.setViewportSize({ width: 320, height: 800 })
+  const columnBox = async (list: typeof todo) => {
+    const box = await list.locator('xpath=ancestor::section[1]').boundingBox()
+    if (box === null) {
+      throw new Error('column has no bounding box')
+    }
+    return box
+  }
+  const boxes = async () => [await columnBox(todo), await columnBox(done)] as const
+  const layoutAt = async (width: number, stacked: boolean) => {
+    await page.setViewportSize({ width, height: 800 })
+    await expect
+      .poll(async () => {
+        const [a, b] = await boxes()
+        return stacked ? b.y > a.y : b.x > a.x
+      })
+      .toBe(true)
+    return boxes()
+  }
 
-  const narrow = await columns.evaluateAll((nodes) =>
-    nodes.map((node) => node.getBoundingClientRect()).map(({ x, y, width, height }) => ({ x, y, width, height })),
-  )
-  expect(narrow.every(({ width, height }) => width > 0 && height > 0)).toBe(true)
-  expect(narrow[1]!.y).toBeGreaterThan(narrow[0]!.y)
-  expect(narrow[1]!.x).toBe(narrow[0]!.x)
+  const [wideTodo, wideDone] = await layoutAt(1280, false)
+  for (const box of [wideTodo, wideDone]) {
+    expect(box.width).toBeGreaterThan(0)
+    expect(box.height).toBeGreaterThan(0)
+  }
+  expect(wideDone.x).toBeGreaterThan(wideTodo.x)
+  expect(wideDone.y).toBeCloseTo(wideTodo.y, 1)
 
-  await page.setViewportSize({ width: 1280, height: 800 })
+  const [narrowTodo, narrowDone] = await layoutAt(320, true)
+  for (const box of [narrowTodo, narrowDone]) {
+    expect(box.width).toBeGreaterThan(0)
+    expect(box.height).toBeGreaterThan(0)
+  }
+  expect(narrowDone.y).toBeGreaterThan(narrowTodo.y)
+  expect(narrowDone.x).toBeCloseTo(narrowTodo.x, 1)
+
+  await layoutAt(1280, false)
 
   const input = page.getByRole('textbox', { name: 'New todo' })
   await input.fill('Water the plants')
   await input.press('Enter')
 
-  await expect(todo.getByRole('listitem')).toHaveText(['Water the plants×'])
+  await expect(todo.getByRole('listitem')).toHaveText(['Water the plants\u00d7'])
   await expect(done.getByRole('listitem')).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'DONE' })).toBeVisible()
 })
