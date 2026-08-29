@@ -2,14 +2,40 @@
 title: 'Story 1.4 — Complete and Delete a Todo'
 type: 'feature'
 created: '2026-08-29'
-status: 'in-review' # draft | ready-for-dev | in-progress | in-review | done | blocked
+status: 'done' # draft | ready-for-dev | in-progress | in-review | done | blocked
 baseline_revision: '9bd5174b551dfe5bb76242fb041ebd45b754e861'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
 warnings: [oversized]
-deferred: []
+deferred:
+  - summary: >-
+      Rows are never marked pending while a toggle or delete is in flight, so a double-click
+      fires two mutations on the same row and a late failure can roll back over the user's
+      newer intent.
+    evidence: |-
+      toggleTodo and deleteTodo apply optimistically but never set `pending: true`, so
+      TodoRow's `disabled={todo.pending}` never engages for these paths and the hook's own
+      `row.pending` guard is unreachable. If a second toggle on the same id is confirmed and
+      the first PATCH then rejects, the revert writes the stale captured value back. Consequence
+      is bounded — a single-user local board, corrected by any reload — and the fix (marking the
+      row pending for the duration of the call) changes the mid-flight control affordance, which
+      is Story 1.6's surface.
+    location: >-
+      frontend/src/hooks/useTodos.ts:99
+    severity: medium
+  - summary: >-
+      A completed row's label renders --color-text-done #555555 on #000000 at 2.81:1, under the
+      4.5:1 WCAG AA bar.
+    evidence: |-
+      axe-core reports two color-contrast nodes on a board carrying completed rows. The token
+      predates this story (recorded in qa/story-1.2.md) and no new hex was added here, but this
+      story makes it reachable from the UI for the first time. It is a token-level decision owned
+      by UX, and the epic makes AA a stretch goal rather than a gate.
+    location: >-
+      frontend/src/styles/tokens.css
+    severity: low
 ---
 
 <intent-contract>
@@ -119,6 +145,54 @@ Frontend (under `frontend/`):
 
 ## Review Triage Log
 
+### 2026-08-29 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 6: (high 0, medium 4, low 2)
+- defer: 2: (high 0, medium 1, low 1)
+- reject: 22: (high 0, medium 0, low 22)
+- addressed_findings:
+  - `[medium]` `[patch]` The PATCH tests asserted only the response body, which is serialized from
+    the same in-memory object the service just mutated, so a non-durable update would have shipped
+    green. The fresh-session read-back now asserts `completed`; mutation-verified against an
+    `update_completed` that returns a detached copy.
+  - `[medium]` `[patch]` The owner predicate in `repository.get_todo` is the change's only
+    authorization boundary and nothing covered it — dropping it left the suite green, and it would
+    let any user mutate any todo by id the moment `current_scope` returns a real id. The existing
+    cross-owner test now PATCHes and DELETEs the `user_id='other'` row, expecting the 404 envelope
+    and the row's survival; mutation-verified.
+  - `[medium]` `[patch]` `setError(null)` on the toggle and delete success paths was asserted by
+    nothing, so deleting it stranded the red alert on the board for the rest of the session. Both
+    rollback cases now continue into a succeeding retry and assert the alert is gone;
+    mutation-verified on each path.
+  - `[medium]` `[patch]` `moveFocusOut` exists to satisfy the "focus neither lost nor trapped when
+    a row leaves the DOM" criterion, but no test referenced focus at all — removing the call left
+    everything green while focus dropped to `<body>`. The optimistic-delete case now asserts the
+    neighbouring `Delete` holds focus; mutation-verified.
+  - `[low]` `[patch]` `repository.delete_todo` issued `session.delete` with no `flush`, unlike its
+    siblings, so an integrity failure would raise at commit time outside the service and surface as
+    a bare 500 rather than the AD-4 envelope. Added `session.flush()`.
+  - `[low]` `[patch]` `qa/story-1.4.md` claimed five backend integration cases and 35 passing tests,
+    which no longer described the tree it audits. Corrected to the real accounting (38 backend
+    cases, the two closing the matrix's malformed-update-body row, the owner extension) and moved
+    the four mutants patches 1-4 now kill out of the not-covered list.
+
+Also patched before the review pass: the I/O matrix's "Bad update body" row had no covering test, so
+a parametrized `{}` / `{"completed": "yes-ish"}` case and a non-JSON case were added to close the
+matrix audit.
+
+Rejected as noise or out of scope on the intent's authority: per-row aria-labels and success live-region
+announcements (the epic fixes the microcopy at `Delete`/`Add todo` and mandates no extra copy), an undo
+affordance and a delete confirmation (explicitly none in v1), `If-Match`/`updatedAt` optimistic
+concurrency and a PATCH-response reconciliation (v1 echoes what it was sent), `encodeURIComponent` on
+server-generated UUID ids, OpenAPI 400/404 documentation (already rejected in 1.3), a shared E2E reset
+fixture and the `×` glyph in E2E assertions (pre-existing conventions from 1.2/1.3), `flushSync` and
+updater-purity preferences (React invokes the updater with the same base state, so the captured value
+is idempotent, and live Chrome confirms the behaviour), a repeat-DELETE idempotency test and
+forged-`id` mass-assignment tests (both already answered by the unknown-id and extra-field rows),
+delete-index staleness and focus restoration on a failed delete, docker-availability guards in the E2E
+helper, and several naming and test-hygiene preferences.
+
 ## Design Notes
 
 **Where the 404 comes from.** The service fetches through `repository.get_todo` and raises
@@ -163,3 +237,64 @@ order-independent under `make test-e2e`, which tears the profile down with `--vo
 - `grep -rn 'fetch(' frontend/src --include='*.ts' --include='*.tsx' | grep -v test` -- expected: only `api/client.ts`.
 - `curl -s -X PATCH localhost:8000/api/todos/<id> -H 'Content-Type: application/json' -d '{"completed":true,"description":"hacked"}'` -- expected: `200` with `completed: true` and the original description.
 - `curl -s -o /dev/null -w '%{http_code}' -X DELETE localhost:8000/api/todos/<id>` -- expected: `204`, then a repeat returns `404` with the envelope and no stack trace.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented change**
+
+The mutate half of the todo CRUD API and the row controls that drive it. `PATCH /api/todos/{id}`
+accepts a `TodoUpdate` carrying only `completed`, so description immutability holds by construction
+rather than by a guard; `DELETE /api/todos/{id}` hard-deletes and answers `204` with no body. Both
+resolve the row through one owner-scoped `repository.get_todo`, and both raise `NotFoundError` from
+the service for an unknown or foreign id, so the single `AppError` handler already registered in
+`main.py` produces the one `404 NOT_FOUND` envelope. On the client, `updateTodo`/`deleteTodo` join
+`api/client.ts` as the only other request sites, and `useTodos` gained `toggleTodo` and `deleteTodo`
+applying the AD-6 sequence with a strictly per-row revert — the toggle restores the exact prior
+`completed`, the delete splices the row back at its captured index — so a concurrently mutated todo
+is never undone. `TodoRow` became interactive through props only, handing focus to a neighbour before
+the optimistic removal unmounts it.
+
+**Files changed**
+
+- `backend/app/schemas.py` — `TodoUpdate` with a single `completed: bool`.
+- `backend/app/repository.py` — `get_todo` (owner-scoped), `update_completed`, `delete_todo`; flush, never commit.
+- `backend/app/services.py` — `set_completed` and `delete_todo`, the sole origin of the 404.
+- `backend/app/routers/todos.py` — `PATCH /{todo_id}` → `TodoRead`, `DELETE /{todo_id}` → 204.
+- `backend/tests/test_todos_api.py` — the epic's five backend rows, the matrix's malformed-body row, and cross-owner mutation coverage.
+- `frontend/src/api/client.ts` — `updateTodo(id, completed)` and `deleteTodo(id)`.
+- `frontend/src/hooks/useTodos.ts` — `toggleTodo`/`deleteTodo` with per-row revert; no whole-list snapshot.
+- `frontend/src/components/TodoRow.tsx` — interactive checkbox and `×` through props, plus the focus hand-off.
+- `frontend/src/components/TodoColumn.tsx`, `frontend/src/App.tsx` — callbacks threaded through.
+- `frontend/src/App.test.tsx` — the epic's six frontend rows, extended with alert-clearing and focus assertions.
+- `e2e/tests/complete-and-delete.spec.ts` — the epic's single journey, API-seeded and self-resetting.
+- `qa/story-1.4.md` — the five agentic checks with evidence and mutation proofs.
+
+**Review findings**
+
+Patches applied: 6 (medium 4, low 2). Deferred: 2 (medium 1, low 1) — the missing in-flight `pending`
+mark, and the carried-over `--color-text-done` contrast token. Rejected: 22, all low.
+
+Follow-up review recommended: **true** — patched severities were 0 high, 4 medium, 2 low, scoring
+3 × 4 + 1 × 2 = 14, at or above the threshold of 5.
+
+**Verification**
+
+`make ci` exits 0 after the patches: lint (Ruff check, Ruff format, `tsc --noEmit`), backend 38 passed
+with coverage 99% (212 statements, 2 missed), frontend 23 passed with 93.91% lines, and all three
+Playwright journeys green against the `test` profile, torn down with `--volumes`. The spec's
+acceptance greps hold: queries and mutations only in `repository.py` with the sole `commit()` in
+`db.py`, `NOT_FOUND` only in `errors.py`, and the sole `fetch(` in `api/client.ts`. Every I/O matrix
+row is covered by a test that ran and passed. Each of the four test-level patches was mutation-verified
+— the covering assertion fails when the behaviour it guards is removed.
+
+**Residual risks**
+
+- The route's own `current_scope` wiring cannot be distinguished from `None` at the test layer while
+  v1's scope is always `None`; the repository predicate beneath it is now covered and the end-to-end
+  behaviour is curl-verified.
+- Concurrent mutations on the *same* row are unguarded — see the first deferred item.
+- A completed row's label is below the AA contrast bar — see the second deferred item; token-level and
+  owned by UX.
