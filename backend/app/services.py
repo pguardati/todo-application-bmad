@@ -20,3 +20,7 @@ def check_health(session: Session) -> dict[str, str]:
 
 def list_todos(session: Session, owner: str | None) -> list[Todo]:
     return repository.list_todos(session, owner)
+
+
+def create_todo(session: Session, description: str, owner: str | None) -> Todo:
+    return repository.create_todo(session, description, owner)

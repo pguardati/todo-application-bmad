@@ -12,3 +12,11 @@ def list_todos(session: Session, owner: str | None) -> list[Todo]:
     # current_scope returns a real id (AD-15), so one expression serves both.
     statement = select(Todo).where(col(Todo.user_id) == owner).order_by(col(Todo.created_at).desc())
     return list(session.exec(statement).all())
+
+
+def create_todo(session: Session, description: str, owner: str | None) -> Todo:
+    todo = Todo(description=description, user_id=owner)
+    session.add(todo)
+    session.flush()
+    session.refresh(todo)
+    return todo
