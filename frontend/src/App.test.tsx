@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
-import { ApiRequestError, createTodo, listTodos } from './api/client'
+import { ApiRequestError, createTodo, deleteTodo, listTodos, updateTodo } from './api/client'
 import { DESCRIPTION_MAX_LENGTH, type Todo } from './api/types'
 import TodoColumn from './components/TodoColumn'
 
@@ -11,6 +11,8 @@ vi.mock('./api/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./api/client')>()),
   listTodos: vi.fn(),
   createTodo: vi.fn(),
+  updateTodo: vi.fn(),
+  deleteTodo: vi.fn(),
 }))
 
 const rows: Todo[] = [
@@ -22,6 +24,8 @@ const rows: Todo[] = [
 beforeEach(() => {
   vi.mocked(listTodos).mockReset()
   vi.mocked(createTodo).mockReset()
+  vi.mocked(updateTodo).mockReset()
+  vi.mocked(deleteTodo).mockReset()
 })
 
 const saved = (description: string): Todo => ({
@@ -87,7 +91,15 @@ describe('App', () => {
 
 describe('TodoColumn', () => {
   it('renders exactly the todos it is given, in order, without re-filtering or re-sorting', () => {
-    render(<TodoColumn id="mixed-label" label="MIXED" todos={rows} />)
+    render(
+      <TodoColumn
+        id="mixed-label"
+        label="MIXED"
+        todos={rows}
+        onToggle={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
 
     const items = screen.getAllByRole('listitem')
 
@@ -220,5 +232,120 @@ describe('adding a todo', () => {
 
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
     expect(input).toHaveValue('')
+  })
+})
+
+const board = async () => {
+  vi.mocked(listTodos).mockResolvedValue(rows)
+  render(<App />)
+  await screen.findByRole('list', { name: 'TODO' })
+  return {
+    todo: () => screen.getByRole('list', { name: 'TODO' }),
+    done: () => screen.getByRole('list', { name: 'DONE' }),
+  }
+}
+
+const labels = (list: HTMLElement) =>
+  within(list)
+    .queryAllByRole('listitem')
+    .map((item) => item.textContent)
+
+describe('completing and deleting a todo', () => {
+  it('moves the row to DONE before confirmation and calls the client once', async () => {
+    const user = userEvent.setup()
+    vi.mocked(updateTodo).mockReturnValue(new Promise<Todo>(() => {}))
+    const { todo, done } = await board()
+
+    await user.click(within(todo()).getAllByRole('checkbox', { name: 'Mark complete' })[0]!)
+
+    expect(labels(todo())).toEqual(['Buy groceries×'])
+    expect(labels(done())).toEqual(['Fix the auth bug×', 'Morning standup×'])
+    const moved = within(done()).getAllByRole('listitem')[0]!
+    expect(moved).toHaveClass('row', 'done')
+    expect(within(moved).getByRole('checkbox', { name: 'Mark incomplete' })).toBeChecked()
+    expect(vi.mocked(updateTodo).mock.calls).toEqual([['c', true]])
+  })
+
+  it('removes the row before confirmation and calls the client once', async () => {
+    const user = userEvent.setup()
+    vi.mocked(deleteTodo).mockReturnValue(new Promise<void>(() => {}))
+    const { todo, done } = await board()
+
+    await user.click(within(todo()).getAllByRole('button', { name: 'Delete' })[0]!)
+
+    expect(labels(todo())).toEqual(['Buy groceries×'])
+    expect(labels(done())).toEqual(['Morning standup×'])
+    expect(vi.mocked(deleteTodo).mock.calls).toEqual([['c']])
+  })
+
+  it('returns only the toggled row to its column and surfaces the message', async () => {
+    const user = userEvent.setup()
+    vi.mocked(updateTodo).mockRejectedValue(new ApiRequestError('Todo not found.', 'NOT_FOUND'))
+    const { todo, done } = await board()
+
+    await user.click(within(done()).getByRole('checkbox', { name: 'Mark incomplete' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Todo not found.')
+    expect(labels(todo())).toEqual(['Fix the auth bug×', 'Buy groceries×'])
+    expect(labels(done())).toEqual(['Morning standup×'])
+    expect(within(done()).getByRole('checkbox', { name: 'Mark incomplete' })).toBeChecked()
+  })
+
+  it('re-inserts the deleted row at its original index and surfaces the message', async () => {
+    const user = userEvent.setup()
+    vi.mocked(deleteTodo).mockRejectedValue(new ApiRequestError('Todo not found.', 'NOT_FOUND'))
+    const { todo, done } = await board()
+
+    await user.click(within(todo()).getAllByRole('button', { name: 'Delete' })[0]!)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Todo not found.')
+    expect(labels(todo())).toEqual(['Fix the auth bug×', 'Buy groceries×'])
+    expect(labels(done())).toEqual(['Morning standup×'])
+  })
+
+  it('reverts a failed toggle without undoing a todo mutated meanwhile', async () => {
+    const user = userEvent.setup()
+    let fail: (reason: unknown) => void = () => {}
+    vi.mocked(updateTodo).mockImplementation((id) =>
+      id === 'c'
+        ? new Promise<Todo>((_, reject) => {
+            fail = reject
+          })
+        : Promise.resolve({ ...rows[2]!, completed: true }),
+    )
+    const { todo, done } = await board()
+
+    await user.click(within(todo()).getAllByRole('checkbox', { name: 'Mark complete' })[0]!)
+    await user.click(within(todo()).getByRole('checkbox', { name: 'Mark complete' }))
+    expect(labels(done())).toEqual(['Fix the auth bug×', 'Morning standup×', 'Buy groceries×'])
+
+    fail(new ApiRequestError('Todo not found.', 'NOT_FOUND'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Todo not found.')
+    expect(labels(todo())).toEqual(['Fix the auth bug×'])
+    expect(labels(done())).toEqual(['Morning standup×', 'Buy groceries×'])
+  })
+
+  it('reverts a failed delete without undoing a todo mutated meanwhile', async () => {
+    const user = userEvent.setup()
+    let fail: (reason: unknown) => void = () => {}
+    vi.mocked(deleteTodo).mockReturnValue(
+      new Promise<void>((_, reject) => {
+        fail = reject
+      }),
+    )
+    vi.mocked(updateTodo).mockResolvedValue({ ...rows[2]!, completed: true })
+    const { todo, done } = await board()
+
+    await user.click(within(todo()).getAllByRole('button', { name: 'Delete' })[0]!)
+    await user.click(within(todo()).getByRole('checkbox', { name: 'Mark complete' }))
+    expect(labels(todo())).toEqual([])
+    expect(labels(done())).toEqual(['Morning standup×', 'Buy groceries×'])
+
+    fail(new ApiRequestError('Todo not found.', 'NOT_FOUND'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Todo not found.')
+    expect(labels(todo())).toEqual(['Fix the auth bug×'])
+    expect(labels(done())).toEqual(['Morning standup×', 'Buy groceries×'])
   })
 })

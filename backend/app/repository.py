@@ -20,3 +20,20 @@ def create_todo(session: Session, description: str, owner: str | None) -> Todo:
     session.flush()
     session.refresh(todo)
     return todo
+
+
+def get_todo(session: Session, todo_id: str, owner: str | None) -> Todo | None:
+    statement = select(Todo).where(col(Todo.id) == todo_id, col(Todo.user_id) == owner)
+    return session.exec(statement).first()
+
+
+def update_completed(session: Session, todo: Todo, completed: bool) -> Todo:
+    todo.completed = completed
+    session.add(todo)
+    session.flush()
+    session.refresh(todo)
+    return todo
+
+
+def delete_todo(session: Session, todo: Todo) -> None:
+    session.delete(todo)

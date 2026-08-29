@@ -125,3 +125,70 @@ async def test_a_created_todo_heads_the_list(client: AsyncClient, engine) -> Non
         "Morning standup",
         "Buy groceries",
     ]
+
+
+async def test_patch_toggles_completion_in_both_directions(client: AsyncClient, engine) -> None:
+    created = (await client.post("/api/todos", json={"description": "Ship it"})).json()
+
+    done = await client.patch(f"/api/todos/{created['id']}", json={"completed": True})
+
+    assert done.status_code == 200
+    assert done.json() == {**created, "completed": True}
+
+    undone = await client.patch(f"/api/todos/{created['id']}", json={"completed": False})
+
+    assert undone.status_code == 200
+    assert undone.json() == created
+
+
+async def test_patch_leaves_every_other_field_untouched(client: AsyncClient, engine) -> None:
+    created = (await client.post("/api/todos", json={"description": "Ship it"})).json()
+
+    response = await client.patch(
+        f"/api/todos/{created['id']}",
+        json={"completed": True, "description": "hacked", "userId": "other"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {**created, "completed": True}
+    with Session(engine) as session:
+        stored = session.get(Todo, created["id"])
+    assert stored is not None
+    assert stored.description == "Ship it"
+    assert stored.user_id is None
+
+
+async def test_patch_on_an_unknown_id_answers_the_not_found_envelope(
+    client: AsyncClient, engine
+) -> None:
+    response = await client.patch("/api/todos/does-not-exist", json={"completed": True})
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "NOT_FOUND", "message": "Todo not found."}
+
+
+async def test_delete_removes_the_row_and_answers_204_without_a_body(
+    client: AsyncClient, engine
+) -> None:
+    seed(engine)
+    created = (await client.post("/api/todos", json={"description": "Ship it"})).json()
+
+    response = await client.delete(f"/api/todos/{created['id']}")
+
+    assert response.status_code == 204
+    assert response.content == b""
+    body = (await client.get("/api/todos")).json()
+    assert [item["description"] for item in body] == [
+        "Fix the auth bug",
+        "Morning standup",
+        "Buy groceries",
+    ]
+
+
+async def test_delete_on_an_unknown_id_answers_the_not_found_envelope(
+    client: AsyncClient, engine
+) -> None:
+    response = await client.delete("/api/todos/does-not-exist")
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "NOT_FOUND", "message": "Todo not found."}

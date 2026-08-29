@@ -32,6 +32,10 @@ class TodoCreate(ApiSchema):
     description: Description
 
 
+class TodoUpdate(ApiSchema):
+    completed: bool
+
+
 class TodoRead(ApiSchema):
     id: str
     description: str
