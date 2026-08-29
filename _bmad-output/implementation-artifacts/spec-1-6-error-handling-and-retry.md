@@ -2,7 +2,7 @@
 title: 'Story 1.6 — Error Handling and Retry'
 type: 'feature'
 created: '2026-08-29'
-status: 'in-progress' # draft | ready-for-dev | in-progress | in-review | done | blocked
+status: 'in-review' # draft | ready-for-dev | in-progress | in-review | done | blocked
 baseline_revision: '25a474812f6a972fb422ffd06cff929197851fcd'
 review_loop_iteration: 0
 followup_review_recommended: false
