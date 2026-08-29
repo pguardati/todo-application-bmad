@@ -1,4 +1,9 @@
+import TodoColumn from './components/TodoColumn'
+import { useTodos } from './hooks/useTodos'
+
 export default function App() {
+  const { active, completed, loading, error } = useTodos()
+
   return (
     <main className="app">
       <div className="add-bar">
@@ -15,21 +20,22 @@ export default function App() {
         />
       </div>
 
-      <div className="columns">
-        <section className="column" aria-labelledby="todo-label">
-          <h2 className="section-label" id="todo-label">
-            TODO
-          </h2>
-          <ul className="list" aria-labelledby="todo-label" />
-        </section>
+      {error && (
+        <p className="state-line state-line-error" role="alert">
+          {error}
+        </p>
+      )}
 
-        <section className="column" aria-labelledby="done-label">
-          <h2 className="section-label" id="done-label">
-            DONE
-          </h2>
-          <ul className="list" aria-labelledby="done-label" />
-        </section>
-      </div>
+      {loading ? (
+        <p className="state-line" role="status">
+          Loading…
+        </p>
+      ) : (
+        <div className="columns">
+          <TodoColumn id="todo-label" label="TODO" todos={active} />
+          <TodoColumn id="done-label" label="DONE" todos={completed} />
+        </div>
+      )}
     </main>
   )
 }

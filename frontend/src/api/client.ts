@@ -1,4 +1,4 @@
-import type { ApiError } from './types'
+import type { ApiError, Todo } from './types'
 
 export const NETWORK_ERROR_MESSAGE = 'Could not reach the server. Please try again.'
 
@@ -42,4 +42,8 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return (await response.json()) as T
+}
+
+export function listTodos(): Promise<Todo[]> {
+  return request<Todo[]>('/todos')
 }
