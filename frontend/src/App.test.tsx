@@ -3,7 +3,14 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
-import { ApiRequestError, createTodo, deleteTodo, listTodos, updateTodo } from './api/client'
+import {
+  ApiRequestError,
+  NETWORK_ERROR_MESSAGE,
+  createTodo,
+  deleteTodo,
+  listTodos,
+  updateTodo,
+} from './api/client'
 import { DESCRIPTION_MAX_LENGTH, type Todo } from './api/types'
 import TodoColumn from './components/TodoColumn'
 
@@ -34,6 +41,11 @@ const saved = (description: string): Todo => ({
   completed: false,
   createdAt: '2026-08-30T09:00:00Z',
 })
+
+const labels = (list: HTMLElement) =>
+  within(list)
+    .queryAllByRole('listitem')
+    .map((item) => item.textContent)
 
 describe('App', () => {
   it('shows a loading indicator before the fetch resolves, never a blank page', async () => {
@@ -77,15 +89,64 @@ describe('App', () => {
     expect(within(todo).getAllByRole('checkbox', { name: 'Mark complete' })).toHaveLength(2)
   })
 
-  it('surfaces a failed load as an alert without blanking the board', async () => {
+  it('surfaces a failed load as an alert with a retry control, without blanking the board', async () => {
     vi.mocked(listTodos).mockRejectedValue(new ApiRequestError('Internal server error', 'INTERNAL_ERROR'))
 
     render(<App />)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Internal server error')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Internal server error')
+    const retry = within(alert).getByRole('button', { name: 'Retry' })
+    expect(retry).toBeEnabled()
+    expect(retry).toHaveAttribute('type', 'button')
     expect(screen.getByRole('heading', { name: 'TODO' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'DONE' })).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'TODO' })).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'DONE' })).toBeInTheDocument()
     expect(screen.queryAllByRole('listitem')).toHaveLength(0)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the single authored string when the failure carries no response', async () => {
+    vi.mocked(listTodos).mockRejectedValue(new TypeError('Failed to fetch'))
+
+    render(<App />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(NETWORK_ERROR_MESSAGE)
+    expect(screen.queryByText('Failed to fetch')).not.toBeInTheDocument()
+  })
+
+  it('recovers on retry by mouse and by Enter, issuing exactly one fetch per activation', async () => {
+    const user = userEvent.setup()
+    vi.mocked(listTodos)
+      .mockRejectedValueOnce(new ApiRequestError('Internal server error', 'INTERNAL_ERROR'))
+      .mockRejectedValueOnce(new ApiRequestError('Internal server error', 'INTERNAL_ERROR'))
+      .mockResolvedValue(rows)
+
+    render(<App />)
+
+    await screen.findByRole('alert')
+    expect(listTodos).toHaveBeenCalledTimes(1)
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(listTodos).toHaveBeenCalledTimes(2)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Internal server error')
+
+    const retry = screen.getByRole('button', { name: 'Retry' })
+    retry.focus()
+    expect(retry).toHaveFocus()
+    await user.keyboard('{Enter}')
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+    expect(listTodos).toHaveBeenCalledTimes(3)
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(labels(screen.getByRole('list', { name: 'TODO' }))).toEqual([
+      'Fix the auth bug×',
+      'Buy groceries×',
+    ])
+    expect(labels(screen.getByRole('list', { name: 'DONE' }))).toEqual(['Morning standup×'])
   })
 })
 
@@ -219,13 +280,14 @@ describe('adding a todo', () => {
 
     await user.type(input, 'Water the plants{Enter}')
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid request.')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Invalid request.')
+    expect(within(alert).getByRole('button', { name: 'Retry' })).toBeEnabled()
     const items = within(screen.getByRole('list', { name: 'TODO' })).getAllByRole('listitem')
     expect(items.map((item) => item.textContent)).toEqual(['Fix the auth bug×', 'Buy groceries×'])
-    expect(within(screen.getByRole('list', { name: 'DONE' })).getAllByRole('listitem')).toHaveLength(
-      1,
-    )
+    expect(labels(screen.getByRole('list', { name: 'DONE' }))).toEqual(['Morning standup×'])
     expect(input).toHaveValue('Water the plants')
+    expect(listTodos).toHaveBeenCalledTimes(1)
 
     vi.mocked(createTodo).mockResolvedValue(saved('Water the plants'))
     await user.type(input, '{Enter}')
@@ -244,11 +306,6 @@ const board = async () => {
     done: () => screen.getByRole('list', { name: 'DONE' }),
   }
 }
-
-const labels = (list: HTMLElement) =>
-  within(list)
-    .queryAllByRole('listitem')
-    .map((item) => item.textContent)
 
 describe('completing and deleting a todo', () => {
   it('moves the row to DONE before confirmation and calls the client once', async () => {
@@ -286,10 +343,13 @@ describe('completing and deleting a todo', () => {
 
     await user.click(within(done()).getByRole('checkbox', { name: 'Mark incomplete' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Todo not found.')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Todo not found.')
+    expect(within(alert).getByRole('button', { name: 'Retry' })).toBeEnabled()
     expect(labels(todo())).toEqual(['Fix the auth bug×', 'Buy groceries×'])
     expect(labels(done())).toEqual(['Morning standup×'])
     expect(within(done()).getByRole('checkbox', { name: 'Mark incomplete' })).toBeChecked()
+    expect(listTodos).toHaveBeenCalledTimes(1)
 
     vi.mocked(updateTodo).mockResolvedValue({ ...rows[1]!, completed: false })
     await user.click(within(done()).getByRole('checkbox', { name: 'Mark incomplete' }))
@@ -304,9 +364,12 @@ describe('completing and deleting a todo', () => {
 
     await user.click(within(todo()).getAllByRole('button', { name: 'Delete' })[0]!)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Todo not found.')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Todo not found.')
+    expect(within(alert).getByRole('button', { name: 'Retry' })).toBeEnabled()
     expect(labels(todo())).toEqual(['Fix the auth bug×', 'Buy groceries×'])
     expect(labels(done())).toEqual(['Morning standup×'])
+    expect(listTodos).toHaveBeenCalledTimes(1)
 
     vi.mocked(deleteTodo).mockResolvedValue(undefined)
     await user.click(within(todo()).getAllByRole('button', { name: 'Delete' })[0]!)

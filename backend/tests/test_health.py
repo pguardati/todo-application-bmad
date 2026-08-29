@@ -78,6 +78,13 @@ def error_client(engine) -> AsyncClient:
         session.add(Todo(description="uncommitted"))
         raise RuntimeError("kaboom")
 
+    @probe_app.post("/api/probe/leak")
+    def leak(body: Body) -> None:
+        raise RuntimeError(
+            f"SELECT id FROM todo WHERE owner = '{body.count}' "
+            f"at /srv/app/repository.py line 42 (sqlmodel 0.0.31)"
+        )
+
     return AsyncClient(
         transport=ASGITransport(app=probe_app, raise_app_exceptions=False),
         base_url="http://test",
@@ -116,6 +123,42 @@ async def test_unhandled_error_returns_generic_500_and_rolls_back(
 
     with Session(engine) as session:
         assert session.exec(select(Todo)).all() == []
+
+
+@pytest.mark.asyncio
+async def test_forced_500_leaks_nothing_while_the_log_keeps_the_detail(
+    error_client: AsyncClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    with caplog.at_level(logging.ERROR, logger="app.main"):
+        async with error_client as http:
+            response = await http.post("/api/probe/leak", json={"count": 8675309})
+
+    assert response.status_code == 500
+    assert response.json() == {"error": "INTERNAL_ERROR", "message": "Internal server error"}
+    assert set(response.json()) == {"error", "message"}
+
+    body = response.text
+    for leaked in (
+        "Traceback",
+        "RuntimeError",
+        "SELECT",
+        "todo",
+        "/srv/app",
+        "repository.py",
+        "sqlmodel",
+        "8675309",
+        "probe",
+    ):
+        assert leaked not in body
+
+    record = next(r for r in caplog.records if r.levelno == logging.ERROR)
+    assert record.exc_info is not None
+    detail = record.getMessage() + "\n" + logging.Formatter().formatException(record.exc_info)
+    assert "RuntimeError" in detail
+    assert "SELECT id FROM todo" in detail
+    assert "/api/probe/leak" in detail
 
 
 def test_current_scope_is_unset_in_v1() -> None:

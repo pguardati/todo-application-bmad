@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 
 import {
@@ -21,6 +21,7 @@ export interface UseTodos {
   addTodo: (description: string) => Promise<boolean>
   toggleTodo: (id: string) => Promise<void>
   deleteTodo: (id: string) => Promise<void>
+  retry: () => Promise<void>
 }
 
 let tempCounter = 0
@@ -39,30 +40,37 @@ export function useTodos(): UseTodos {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const mounted = useRef(true)
+
   useEffect(() => {
-    let active = true
-
-    listTodos()
-      .then((loaded) => {
-        if (active) {
-          setTodos((current) => [...current.filter((row) => row.pending), ...loaded])
-        }
-      })
-      .catch((caught: unknown) => {
-        if (active) {
-          setError(messageOf(caught))
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setLoading(false)
-        }
-      })
-
+    mounted.current = true
     return () => {
-      active = false
+      mounted.current = false
     }
   }, [])
+
+  const load = useCallback(async (): Promise<void> => {
+    setLoading(true)
+    try {
+      const loaded = await listTodos()
+      if (mounted.current) {
+        setTodos((current) => [...current.filter((row) => row.pending), ...loaded])
+        setError(null)
+      }
+    } catch (caught: unknown) {
+      if (mounted.current) {
+        setError(messageOf(caught))
+      }
+    } finally {
+      if (mounted.current) {
+        setLoading(false)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
 
   const addTodo = useCallback(async (description: string): Promise<boolean> => {
     const trimmed = description.trim()
@@ -166,5 +174,6 @@ export function useTodos(): UseTodos {
     addTodo,
     toggleTodo,
     deleteTodo,
+    retry: load,
   }
 }

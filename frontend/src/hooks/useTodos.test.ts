@@ -1,7 +1,7 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiRequestError, listTodos } from '../api/client'
+import { ApiRequestError, NETWORK_ERROR_MESSAGE, listTodos } from '../api/client'
 import type { Todo } from '../api/types'
 import { useTodos } from './useTodos'
 
@@ -47,5 +47,61 @@ describe('useTodos', () => {
     expect(result.current.error).toBe('Internal server error')
     expect(result.current.active).toEqual([])
     expect(result.current.completed).toEqual([])
+  })
+
+  it('falls back to the single authored string when there is no response at all', async () => {
+    vi.mocked(listTodos).mockRejectedValue(new TypeError('Failed to fetch'))
+
+    const { result } = renderHook(() => useTodos())
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.error).toBe(NETWORK_ERROR_MESSAGE)
+    expect(result.current.error).not.toBe('Failed to fetch')
+  })
+
+  it('retry re-issues the fetch, clears the error on success and re-surfaces a second failure', async () => {
+    vi.mocked(listTodos).mockRejectedValueOnce(
+      new ApiRequestError('Internal server error', 'INTERNAL_ERROR'),
+    )
+
+    const { result } = renderHook(() => useTodos())
+
+    await waitFor(() => expect(result.current.error).toBe('Internal server error'))
+    expect(listTodos).toHaveBeenCalledTimes(1)
+
+    let settle: (todos: Todo[]) => void = () => {}
+    vi.mocked(listTodos).mockReturnValueOnce(
+      new Promise<Todo[]>((resolve) => {
+        settle = resolve
+      }),
+    )
+
+    await act(async () => {
+      void result.current.retry()
+    })
+
+    expect(listTodos).toHaveBeenCalledTimes(2)
+    expect(result.current.loading).toBe(true)
+    expect(result.current.error).toBe('Internal server error')
+
+    await act(async () => {
+      settle(rows)
+    })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.error).toBeNull()
+    expect(result.current.active.map((todo) => todo.id)).toEqual(['c', 'a'])
+    expect(result.current.completed.map((todo) => todo.id)).toEqual(['b'])
+
+    vi.mocked(listTodos).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+    await act(async () => {
+      await result.current.retry()
+    })
+
+    expect(listTodos).toHaveBeenCalledTimes(3)
+    expect(result.current.error).toBe(NETWORK_ERROR_MESSAGE)
+    expect(result.current.loading).toBe(false)
   })
 })

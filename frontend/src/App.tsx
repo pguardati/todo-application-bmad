@@ -3,16 +3,20 @@ import TodoColumn from './components/TodoColumn'
 import { useTodos } from './hooks/useTodos'
 
 export default function App() {
-  const { active, completed, loading, error, addTodo, toggleTodo, deleteTodo } = useTodos()
+  const { active, completed, loading, error, addTodo, toggleTodo, deleteTodo, retry } =
+    useTodos()
 
   return (
     <main className="app">
       <AddBar onAdd={addTodo} />
 
       {error && (
-        <p className="state-line state-line-error" role="alert">
+        <div className="state-line state-line-error" role="alert">
           {error}
-        </p>
+          <button type="button" onClick={() => void retry()} disabled={loading}>
+            Retry
+          </button>
+        </div>
       )}
 
       {loading ? (
