@@ -2,7 +2,7 @@
 title: 'Story 1.4 — Complete and Delete a Todo'
 type: 'feature'
 created: '2026-08-29'
-status: 'in-progress' # draft | ready-for-dev | in-progress | in-review | done | blocked
+status: 'in-review' # draft | ready-for-dev | in-progress | in-review | done | blocked
 baseline_revision: '9bd5174b551dfe5bb76242fb041ebd45b754e861'
 review_loop_iteration: 0
 followup_review_recommended: false

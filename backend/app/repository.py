@@ -37,3 +37,4 @@ def update_completed(session: Session, todo: Todo, completed: bool) -> Todo:
 
 def delete_todo(session: Session, todo: Todo) -> None:
     session.delete(todo)
+    session.flush()

@@ -41,8 +41,8 @@ before its response was released.
 
 | Side | Real number | Gate | Enforced by |
 | --- | --- | --- | --- |
-| Backend | 99% lines (211 statements, 2 missed) | 70% | `coverage report`, `fail_under = 70` |
-| Frontend | 93.04% lines | 70% | Vitest `coverage.thresholds.lines: 70` |
+| Backend | 99% lines (212 statements, 2 missed) | 70% | `coverage report`, `fail_under = 70` |
+| Frontend | 93.91% lines | 70% | Vitest `coverage.thresholds.lines: 70` |
 
 Per-file for the files this story touched:
 
@@ -54,12 +54,16 @@ Per-file for the files this story touched:
 | `backend/app/routers/todos.py` | 100% (23/23) |
 | `frontend/src/components/TodoRow.tsx` | 100% lines (75% branch — the neighbour/fallback arms of `moveFocusOut`) |
 | `frontend/src/components/TodoColumn.tsx` | 100% |
-| `frontend/src/hooks/useTodos.ts` | 94.44% — the uncovered lines are the four "nothing to do" early returns (unknown id, pending row) |
+| `frontend/src/hooks/useTodos.ts` | 95.83% — the uncovered lines are the three "nothing to do" early returns (unknown id, pending row) |
 | `frontend/src/api/client.ts` | 81.81% — the uncovered lines are the `listTodos`/`createTodo`/`updateTodo`/`deleteTodo` one-liners, stubbed in unit tests and covered end to end by the Playwright journeys |
 
-Test counts: backend 35 passed (was 30), frontend 23 passed (was 17), E2E 3 journeys passed. Exactly
-the epic's Story 1.4 rows were added — five backend integration cases, six frontend cases, one E2E
-journey, no unit tests (the table's unit row is `none`).
+Test counts: backend 38 passed (was 30), frontend 23 passed (was 17), E2E 3 journeys passed. Eight
+backend test functions were added: the epic's five Story 1.4 rows, plus two closing the spec's
+"Bad update body" I/O-matrix row (`PATCH {}` / `{"completed":"yes-ish"}` parametrized, and a non-JSON
+body) and one extension of the existing owner-exclusion case that now also asserts `PATCH` and
+`DELETE` against another owner's row. Frontend: the epic's six cases, no new test functions — review
+patches extended the existing rollback and optimistic-delete cases instead. One E2E journey, no unit
+tests (the table's unit row is `none`).
 
 **Mutation proof that the new assertions are load-bearing** — each mutation applied in isolation,
 suite run, source restored:
@@ -74,22 +78,29 @@ suite run, source restored:
 | `PATCH` sends the stale `completed` value | frontend: **1 failed**, 22 passed |
 | `TodoRow` checkbox back to `readOnly` | frontend: **4 failed**, 19 passed |
 | `TodoRow` `×` handler removed | frontend: **3 failed**, 20 passed |
-| Drop the owner filter from `repository.get_todo` | backend: 35 passed — **not covered**, see below |
-| Route passes `None` instead of `current_scope` to `set_completed` | backend: 35 passed — **not covered**, see below |
-| Drop `setError(null)` after a successful toggle | frontend: 23 passed — **not covered**, see below |
+| Drop the owner filter from `repository.get_todo` | backend: **1 failed**, 37 passed |
+| `update_completed` mutates only the returned object, never the session | backend: **1 failed**, 37 passed |
+| Drop `setError(null)` after a successful toggle | frontend: **1 failed**, 22 passed |
+| Drop `setError(null)` after a successful delete | frontend: **1 failed**, 22 passed |
+| Remove the `moveFocusOut` call from `TodoRow` | frontend: **1 failed**, 22 passed |
+| Route passes `None` instead of `current_scope` to `set_completed` | backend: 38 passed — **not covered**, see below |
 | Drop the `pending` guard from `toggleTodo` | frontend: 23 passed — **not covered**, see below |
 
-**Four behaviours are not test-asserted**, because covering them would need rows the epic's Story 1.4
-test table does not have. Each is verified live instead:
+**Two behaviours remain un-asserted.** Each is verified live instead:
 
-- **Owner scoping on both mutations.** In v1 `current_scope` always returns `None`, so no test in the
-  table exercises a second owner. Verified by hand against the running stack: a row seeded with
-  `user_id='other'` answers `404 NOT_FOUND` to both `PATCH` and `DELETE` (section 4).
-- **`setError(null)` after a successful toggle.** The equivalent create-path assertion exists from
-  Story 1.3; the toggle path is verified in the browser — after a failed toggle raised the alert, the
-  next successful toggle removed it (section 5).
+- **The route's own `current_scope` wiring.** `repository.get_todo`'s owner predicate is now covered
+  (the owner-exclusion case asserts `PATCH` and `DELETE` against another owner's row both answer
+  `404` and leave the row intact), but in v1 `current_scope` always returns `None`, so substituting
+  `None` for the dependency at the route is indistinguishable from the real thing at the test layer.
+  Verified by hand against the running stack (section 4).
 - **The `pending` guard in `toggleTodo`.** Defence in depth behind `TodoRow`'s `disabled={todo.pending}`,
   which *is* asserted (Story 1.3's pending-row case) and verified live.
+
+A sixth patch also added `session.flush()` to `repository.delete_todo`, so an integrity failure on a
+delete raises inside the service's session rather than at commit time, where it would bypass the AD-4
+envelope and land in the catch-all as a bare `500`. No test in the epic's table can reach that path —
+v1 has no foreign keys onto `todo` — so it is a correctness alignment with `create_todo` and
+`update_completed`, not a covered behaviour.
 
 ## 3. Accessibility — toggling and deleting (UX-DR5, NFR-5)
 
@@ -190,7 +201,7 @@ The only vertical shift observed at 320px was the error line clearing itself on 
 | Components do not re-partition | `TodoColumn` threads `onToggle`/`onDelete` through and still filters and sorts nothing |
 | E2E order independence | `complete-and-delete.spec.ts` clears in `beforeAll` **and** `afterAll` with the same `docker compose exec backend python` helper, and seeds through `request.post('/api/todos')` rather than the UI |
 | `make lint` | Exit 0 — Ruff check, Ruff format check, `tsc --noEmit` |
-| `make test-backend` | 35 passed; coverage 99% |
+| `make test-backend` | 38 passed; coverage 99% |
 | `make test-frontend` | 23 passed (3 files) |
 | `make test-e2e` | all 3 journeys passed; profile torn down with `--volumes` |
 | `make ci` | **Exit 0** |

@@ -276,6 +276,7 @@ describe('completing and deleting a todo', () => {
     expect(labels(todo())).toEqual(['Buy groceries×'])
     expect(labels(done())).toEqual(['Morning standup×'])
     expect(vi.mocked(deleteTodo).mock.calls).toEqual([['c']])
+    expect(within(todo()).getByRole('button', { name: 'Delete' })).toHaveFocus()
   })
 
   it('returns only the toggled row to its column and surfaces the message', async () => {
@@ -289,6 +290,11 @@ describe('completing and deleting a todo', () => {
     expect(labels(todo())).toEqual(['Fix the auth bug×', 'Buy groceries×'])
     expect(labels(done())).toEqual(['Morning standup×'])
     expect(within(done()).getByRole('checkbox', { name: 'Mark incomplete' })).toBeChecked()
+
+    vi.mocked(updateTodo).mockResolvedValue({ ...rows[1]!, completed: false })
+    await user.click(within(done()).getByRole('checkbox', { name: 'Mark incomplete' }))
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
   })
 
   it('re-inserts the deleted row at its original index and surfaces the message', async () => {
@@ -301,6 +307,12 @@ describe('completing and deleting a todo', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Todo not found.')
     expect(labels(todo())).toEqual(['Fix the auth bug×', 'Buy groceries×'])
     expect(labels(done())).toEqual(['Morning standup×'])
+
+    vi.mocked(deleteTodo).mockResolvedValue(undefined)
+    await user.click(within(todo()).getAllByRole('button', { name: 'Delete' })[0]!)
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+    expect(labels(todo())).toEqual(['Buy groceries×'])
   })
 
   it('reverts a failed toggle without undoing a todo mutated meanwhile', async () => {

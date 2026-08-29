@@ -69,6 +69,19 @@ async def test_rows_belonging_to_another_owner_are_excluded(client: AsyncClient,
     with Session(engine) as session:
         mine = repository.list_todos(session, "other")
     assert [row.description for row in mine] == ["Someone else's todo"]
+    foreign_id = mine[0].id
+
+    patched = await client.patch(f"/api/todos/{foreign_id}", json={"completed": True})
+    deleted = await client.delete(f"/api/todos/{foreign_id}")
+
+    assert patched.status_code == 404
+    assert patched.json() == {"error": "NOT_FOUND", "message": "Todo not found."}
+    assert deleted.status_code == 404
+    assert deleted.json() == {"error": "NOT_FOUND", "message": "Todo not found."}
+    with Session(engine) as session:
+        survivor = session.get(Todo, foreign_id)
+    assert survivor is not None
+    assert survivor.completed is False
 
 
 async def test_create_trims_and_returns_the_stored_row(client: AsyncClient, engine) -> None:
@@ -154,6 +167,7 @@ async def test_patch_leaves_every_other_field_untouched(client: AsyncClient, eng
     with Session(engine) as session:
         stored = session.get(Todo, created["id"])
     assert stored is not None
+    assert stored.completed is True
     assert stored.description == "Ship it"
     assert stored.user_id is None
 
@@ -192,3 +206,28 @@ async def test_delete_on_an_unknown_id_answers_the_not_found_envelope(
 
     assert response.status_code == 404
     assert response.json() == {"error": "NOT_FOUND", "message": "Todo not found."}
+
+
+@pytest.mark.parametrize("payload", [{}, {"completed": "yes-ish"}])
+async def test_rejected_update_bodies_answer_with_the_one_validation_envelope(
+    client: AsyncClient, engine, payload: dict
+) -> None:
+    created = (await client.post("/api/todos", json={"description": "Ship it"})).json()
+
+    response = await client.patch(f"/api/todos/{created['id']}", json=payload)
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "VALIDATION_ERROR", "message": "Invalid request."}
+
+
+async def test_non_json_update_body_is_rejected_the_same_way(client: AsyncClient, engine) -> None:
+    created = (await client.post("/api/todos", json={"description": "Ship it"})).json()
+
+    response = await client.patch(
+        f"/api/todos/{created['id']}",
+        content="not json",
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "VALIDATION_ERROR"
