@@ -1,7 +1,7 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiRequestError, listTodos } from '../api/client'
+import { ApiRequestError, NETWORK_ERROR_MESSAGE, listTodos } from '../api/client'
 import type { Todo } from '../api/types'
 import { useTodos } from './useTodos'
 
@@ -9,6 +9,29 @@ vi.mock('../api/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/client')>()),
   listTodos: vi.fn(),
 }))
+
+// The unmount case needs to see the setters themselves, not their (invisible) effect:
+// React 19 silently discards a state update on an unmounted root.
+const { stateWrites } = vi.hoisted(() => ({ stateWrites: [] as unknown[] }))
+
+vi.mock('react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react')>()
+  return {
+    ...actual,
+    useState: (initial: unknown) => {
+      const [value, set] = (
+        actual.useState as unknown as (i: unknown) => [unknown, (next: unknown) => void]
+      )(initial)
+      return [
+        value,
+        (next: unknown) => {
+          stateWrites.push(next)
+          set(next)
+        },
+      ]
+    },
+  }
+})
 
 const rows: Todo[] = [
   { id: 'c', description: 'Fix the auth bug', completed: false, createdAt: '2026-08-29T09:00:00Z' },
@@ -47,5 +70,133 @@ describe('useTodos', () => {
     expect(result.current.error).toBe('Internal server error')
     expect(result.current.active).toEqual([])
     expect(result.current.completed).toEqual([])
+  })
+
+  it('falls back to the single authored string when there is no response at all', async () => {
+    vi.mocked(listTodos).mockRejectedValue(new TypeError('Failed to fetch'))
+
+    const { result } = renderHook(() => useTodos())
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.error).toBe(NETWORK_ERROR_MESSAGE)
+    expect(result.current.error).not.toBe('Failed to fetch')
+  })
+
+  it('retry re-issues the fetch, clears the error on success and re-surfaces a second failure', async () => {
+    vi.mocked(listTodos).mockRejectedValueOnce(
+      new ApiRequestError('Internal server error', 'INTERNAL_ERROR'),
+    )
+
+    const { result } = renderHook(() => useTodos())
+
+    await waitFor(() => expect(result.current.error).toBe('Internal server error'))
+    expect(listTodos).toHaveBeenCalledTimes(1)
+
+    let settle: (todos: Todo[]) => void = () => {}
+    vi.mocked(listTodos).mockReturnValueOnce(
+      new Promise<Todo[]>((resolve) => {
+        settle = resolve
+      }),
+    )
+
+    await act(async () => {
+      void result.current.retry()
+    })
+
+    expect(listTodos).toHaveBeenCalledTimes(2)
+    expect(result.current.loading).toBe(true)
+    expect(result.current.error).toBe('Internal server error')
+
+    await act(async () => {
+      settle(rows)
+    })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.error).toBeNull()
+    expect(result.current.active.map((todo) => todo.id)).toEqual(['c', 'a'])
+    expect(result.current.completed.map((todo) => todo.id)).toEqual(['b'])
+
+    vi.mocked(listTodos).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+    await act(async () => {
+      await result.current.retry()
+    })
+
+    expect(listTodos).toHaveBeenCalledTimes(3)
+    expect(result.current.error).toBe(NETWORK_ERROR_MESSAGE)
+    expect(result.current.loading).toBe(false)
+  })
+
+  it('coalesces re-entrant retries into the one fetch already in flight', async () => {
+    let settle: (todos: Todo[]) => void = () => {}
+    vi.mocked(listTodos)
+      .mockRejectedValueOnce(new ApiRequestError('Internal server error', 'INTERNAL_ERROR'))
+      .mockReturnValueOnce(
+        new Promise<Todo[]>((resolve) => {
+          settle = resolve
+        }),
+      )
+
+    const { result } = renderHook(() => useTodos())
+
+    await waitFor(() => expect(result.current.error).toBe('Internal server error'))
+    expect(listTodos).toHaveBeenCalledTimes(1)
+
+    const first = result.current.retry()
+    const second = result.current.retry()
+    const third = result.current.retry()
+
+    expect(listTodos).toHaveBeenCalledTimes(2)
+    expect(second).toBe(first)
+    expect(third).toBe(first)
+
+    await act(async () => {
+      settle(rows)
+      await first
+    })
+
+    expect(listTodos).toHaveBeenCalledTimes(2)
+    expect(result.current.error).toBeNull()
+    expect(result.current.loading).toBe(false)
+
+    vi.mocked(listTodos).mockResolvedValueOnce(rows)
+    await act(async () => {
+      await result.current.retry()
+    })
+
+    expect(listTodos).toHaveBeenCalledTimes(3)
+  })
+
+  it('never touches state once the hook has unmounted mid-flight', async () => {
+    let settle: (todos: Todo[]) => void = () => {}
+    vi.mocked(listTodos).mockReturnValueOnce(
+      new Promise<Todo[]>((resolve) => {
+        settle = resolve
+      }),
+    )
+
+    const { result, unmount } = renderHook(() => useTodos())
+
+    expect(result.current.loading).toBe(true)
+    unmount()
+
+    const writesAtUnmount = stateWrites.length
+    await act(async () => {
+      settle(rows)
+    })
+
+    expect(stateWrites.length).toBe(writesAtUnmount)
+  })
+
+  it('still writes state while the hook is mounted', async () => {
+    vi.mocked(listTodos).mockResolvedValue(rows)
+
+    const before = stateWrites.length
+    const { result } = renderHook(() => useTodos())
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(stateWrites.length).toBeGreaterThan(before)
   })
 })
