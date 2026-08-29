@@ -361,3 +361,59 @@ describe('completing and deleting a todo', () => {
     expect(labels(done())).toEqual(['Morning standup×', 'Buy groceries×'])
   })
 })
+
+describe('the empty board', () => {
+  const expectsEmptyBoard = () => {
+    const main = screen.getByRole('main')
+
+    expect(screen.getByRole('heading', { name: 'TODO' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'DONE' })).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(main).toHaveTextContent(/^\s*\+\s*TODO\s*DONE\s*$/)
+    expect(main.querySelectorAll('img, svg, picture, canvas')).toHaveLength(0)
+
+    for (const label of ['TODO', 'DONE']) {
+      const list = screen.getByRole('list', { name: label })
+      expect(within(list).queryAllByRole('listitem')).toHaveLength(0)
+      expect(list.children).toHaveLength(0)
+
+      const column = list.closest('section.column')!
+      expect([...column.children].map((child) => child.tagName)).toEqual(['H2', 'UL'])
+    }
+
+    expect(
+      within(main)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual(['Add todo'])
+    expect(within(main).getAllByRole('textbox')).toHaveLength(1)
+    expect(screen.getByRole('textbox', { name: 'New todo' })).toBe(document.activeElement)
+  }
+
+  it('renders both labelled columns with no rows and no empty-state copy on a cold open', async () => {
+    vi.mocked(listTodos).mockResolvedValue([])
+
+    render(<App />)
+
+    await screen.findByRole('list', { name: 'TODO' })
+
+    expectsEmptyBoard()
+  })
+
+  it('returns to that same board when the last todo is deleted', async () => {
+    const user = userEvent.setup()
+    const only = rows[0]!
+    vi.mocked(listTodos).mockResolvedValue([only])
+    vi.mocked(deleteTodo).mockResolvedValue(undefined)
+
+    render(<App />)
+    await screen.findByRole('list', { name: 'TODO' })
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => expect(screen.queryAllByRole('listitem')).toHaveLength(0))
+    expect(vi.mocked(deleteTodo).mock.calls).toEqual([[only.id]])
+    expectsEmptyBoard()
+  })
+})
