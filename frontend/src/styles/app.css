@@ -1,0 +1,150 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--color-canvas);
+  color: var(--color-text);
+  font-family: var(--font-family);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-body);
+  line-height: var(--line-height);
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-6) var(--space-7);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.add-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-8);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-3);
+}
+
+.add-bar:focus-within {
+  border-bottom-color: var(--color-accent);
+}
+
+.btn-icon {
+  flex-shrink: 0;
+  width: var(--add-btn-size);
+  height: var(--add-btn-size);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-accent);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.btn-icon:hover {
+  color: var(--color-accent-hover);
+}
+
+.btn-icon:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.field-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--font-size-body);
+  padding: var(--space-2) 0;
+  outline: none;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-8);
+  flex: 1;
+}
+
+.section-label {
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: uppercase;
+  color: var(--color-accent);
+  margin-bottom: var(--space-4);
+}
+
+.list {
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.row input[type='checkbox'] {
+  flex-shrink: 0;
+  width: var(--control-size);
+  height: var(--control-size);
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.row input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.row .label {
+  flex: 1;
+  font-size: var(--font-size-body);
+  color: var(--color-text);
+}
+
+.row.done .label {
+  color: var(--color-text-done);
+  text-decoration: line-through;
+}
+
+.row .btn-icon {
+  width: auto;
+  height: auto;
+  font-size: 1.125rem;
+  color: var(--color-control);
+  padding: var(--space-1) var(--space-2);
+}
+
+.row .btn-icon:hover {
+  color: var(--color-control-hover);
+}
+
+@media (max-width: 640px) {
+  .app {
+    padding: var(--space-5);
+  }
+
+  .columns {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+  }
+}

@@ -2,3 +2,15 @@ node_modules/
 dist/
 .DS_Store
 *.log
+
+.env
+__pycache__/
+.venv/
+*.db
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+.ruff_cache/
+playwright-report/
+test-results/

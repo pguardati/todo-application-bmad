@@ -1,0 +1,54 @@
+services:
+  backend:
+    profiles: [test]
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: sqlite:////data/todo.db
+    volumes:
+      - type: tmpfs
+        target: /data
+        tmpfs:
+          mode: 0777
+
+  frontend:
+    profiles: [test]
+    build:
+      context: ./frontend
+    ports:
+      - "8080:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  backend-dev:
+    profiles: [dev]
+    build:
+      context: ./backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      DATABASE_URL: sqlite:////data/todo.db
+    volumes:
+      - ./backend/app:/app/app
+      - todo-data:/data
+    ports:
+      - "8000:8000"
+      - "5173:5173"
+
+  frontend-dev:
+    profiles: [dev]
+    image: node:24-bookworm-slim
+    user: "1000:1000"
+    working_dir: /app
+    command: sh -c "npm install --include=dev && npm run dev"
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./frontend:/app
+    network_mode: service:backend-dev
+    depends_on:
+      backend-dev:
+        condition: service_healthy
+
+volumes:
+  todo-data:
