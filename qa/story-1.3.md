@@ -45,7 +45,7 @@ p95 of 5.7 ms is ~90× inside the ≤500 ms localhost budget.
 | Side | Real number | Gate | Enforced by |
 | --- | --- | --- | --- |
 | Backend | 99% lines (182 statements, 2 missed) | 70% | `coverage report`, `fail_under = 70` |
-| Frontend | 97.05% lines (66/68) | 70% | Vitest `coverage.thresholds.lines: 70` |
+| Frontend | 97.1% lines | 70% | Vitest `coverage.thresholds.lines: 70` |
 
 Per-file for the files this story touched:
 
@@ -55,13 +55,15 @@ Per-file for the files this story touched:
 | `backend/app/repository.py` | 100% (13/13) |
 | `backend/app/services.py` | 100% (17/17) |
 | `backend/app/routers/todos.py` | 100% (17/17) |
-| `frontend/src/hooks/useTodos.ts` | 100% lines |
+| `frontend/src/hooks/useTodos.ts` | 100% lines (97.67% statements) |
 | `frontend/src/components/AddBar.tsx` | 100% |
 | `frontend/src/components/TodoRow.tsx` | 100% |
 | `frontend/src/components/TodoColumn.tsx` | 100% |
 | `frontend/src/api/client.ts` | 90% — the two uncovered lines are the `listTodos`/`createTodo` one-liners, which are stubbed in unit tests and covered end to end by the Playwright journeys |
 
-Test counts: backend 32 passed (was 15), frontend 17 passed (was 11), E2E 2 journeys passed.
+Test counts: backend 30 passed (was 15), frontend 17 passed (was 11), E2E 2 journeys passed. No case
+was added beyond the epic's Story 1.3 table; review triage removed one backend case that had no row in
+it and strengthened two existing frontend cases instead of adding new ones.
 
 **Mutation proof that the new assertions are load-bearing** — each mutation applied, suite run,
 source restored:
@@ -76,6 +78,15 @@ source restored:
 | Append the optimistic row instead of prepending it | frontend: **3 failed**, 14 passed |
 | Prepend the server row instead of swapping by temp key | frontend: **1 failed**, 16 passed |
 | Clear the input regardless of the result in `AddBar` | frontend: **2 failed**, 15 passed |
+| Widen the client guard to `length >= DESCRIPTION_MAX_LENGTH` | frontend: **1 failed**, 16 passed |
+| Delete `setError(null)` from the create success path | frontend: **1 failed**, 16 passed |
+| Replace the load-effect merge with `setTodos(loaded)` | frontend: 17 passed — **not covered**, see below |
+
+**One fixed behaviour is not test-asserted.** The load effect merges rather than replaces
+(`[...current.filter((row) => row.pending), ...loaded]`) so a row submitted before `listTodos`
+settles is not wiped by the arriving list. Reverting that merge keeps every suite green, because
+covering it would need a sixth frontend case and the epic's Story 1.3 table allows five. It is
+verified in the real browser instead — see the race row in section 5.
 
 ## 3. Accessibility — add bar and populated board (UX-DR8, NFR-5)
 
@@ -147,6 +158,10 @@ Read from the live page:
 | Client-side rejection — whitespace | `"     "` + Enter: resource entries for `/api/todos` unchanged (3 → 3), no new row, no `role="alert"`, text left in the input |
 | Client-side rejection — 201 chars | same: no request, no copy, input still holds all 201 characters |
 | Create failure (backend container stopped) | only the pending row disappeared, the other 5 rows and DONE untouched, `role="alert"` reads `Could not reach the server. Please try again.` (nginx answers HTML, not the AD-4 envelope, so the client's single local network string is used), and `Will fail` was still in the input |
+| Accept boundary on the wire | a 200-character description issues a `POST`; a 201-character one issues none and stays in the input |
+| 150-emoji description | one `POST`, row rendered — the client no longer refuses what the server accepts |
+| Submit racing the initial load | with `GET /api/todos` delayed 15 s and the row submitted while `role="status"` was still on screen, the created row was still on the board after the list arrived, and `GET /api/todos` confirmed exactly one persisted row per submit — the merge keeps optimistic rows, with no duplicate |
+| Alert clears on the next success | after a failed create, a subsequent successful create removes the `role="alert"` line (asserted in `App.test.tsx` and mutation-verified) |
 | 320px | `.columns` one `272px` track, add bar `x=24 w=272 h=48`, `+` exactly `32×32` (`--add-btn-size`), widest row right edge 296px inside 320px, `scrollWidth === innerWidth` — nothing clips or overflows after an add |
 | 1280px | `.columns` `520px 520px`, no horizontal overflow, `.columns` top stays at `144px` before and after an add — no layout shift |
 
@@ -165,7 +180,8 @@ client-side `AbortController` deadline or an nginx `proxy_read_timeout` is the f
 
 | Check | Result |
 | --- | --- |
-| Boundary lengths end to end | 1-char and 200-char descriptions both `201`; 201 chars `400` |
+| Boundary lengths end to end | 1-char and 200-char descriptions both `201`; 201 chars `400` (asserted at the unit layer, where the epic's table puts the boundary row) |
+| Client and server count the same units | 150 emoji = 150 code points but 300 UTF-16 units; the API returns `201` and the client submits it, because `addTodo` measures `[...trimmed].length` |
 | Round trip | a created row is the first element of `GET /api/todos` and byte-identical to the create response |
 | No commit outside `db.get_session` | `repository.create_todo` does `add` → `flush` → `refresh` only; the request-scoped session commits |
 | `AddBar` purity | it imports neither `api/client` nor `useTodos`; its only state is the input text (`grep` over `src/components/*.tsx` finds `useState` in `AddBar` alone, and no client import anywhere in `components/`) |

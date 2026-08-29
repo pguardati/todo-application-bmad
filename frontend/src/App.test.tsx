@@ -117,7 +117,17 @@ describe('adding a todo', () => {
     await user.click(screen.getByRole('button', { name: 'Add todo' }))
     await waitFor(() => expect(input).toHaveValue(''))
 
-    expect(vi.mocked(createTodo).mock.calls).toEqual([['Water the plants'], ['Call the bank']])
+    const atTheLimit = 'x'.repeat(DESCRIPTION_MAX_LENGTH)
+    await user.click(input)
+    await user.paste(atTheLimit)
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(input).toHaveValue(''))
+
+    expect(vi.mocked(createTodo).mock.calls).toEqual([
+      ['Water the plants'],
+      ['Call the bank'],
+      [atTheLimit],
+    ])
   })
 
   it('shows the row at the top of TODO with its controls disabled before confirmation', async () => {
@@ -204,5 +214,11 @@ describe('adding a todo', () => {
       1,
     )
     expect(input).toHaveValue('Water the plants')
+
+    vi.mocked(createTodo).mockResolvedValue(saved('Water the plants'))
+    await user.type(input, '{Enter}')
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+    expect(input).toHaveValue('')
   })
 })

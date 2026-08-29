@@ -7,6 +7,7 @@ from sqlmodel import Session
 
 from app import repository
 from app.models import Todo
+from app.schemas import DESCRIPTION_MAX_LENGTH
 
 
 def seed(engine) -> None:
@@ -88,7 +89,7 @@ async def test_create_trims_and_returns_the_stored_row(client: AsyncClient, engi
     [
         {"description": ""},
         {"description": "   "},
-        {"description": "x" * 201},
+        {"description": "x" * (DESCRIPTION_MAX_LENGTH + 1)},
         {},
         {"description": 12},
     ],
@@ -109,14 +110,6 @@ async def test_non_json_body_is_rejected_the_same_way(client: AsyncClient, engin
 
     assert response.status_code == 400
     assert response.json()["error"] == "VALIDATION_ERROR"
-
-
-@pytest.mark.parametrize("length", [1, 200])
-async def test_boundary_lengths_are_accepted(client: AsyncClient, engine, length: int) -> None:
-    response = await client.post("/api/todos", json={"description": "x" * length})
-
-    assert response.status_code == 201
-    assert response.json()["description"] == "x" * length
 
 
 async def test_a_created_todo_heads_the_list(client: AsyncClient, engine) -> None:

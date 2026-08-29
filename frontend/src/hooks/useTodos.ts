@@ -35,7 +35,7 @@ export function useTodos(): UseTodos {
     listTodos()
       .then((loaded) => {
         if (active) {
-          setTodos(loaded)
+          setTodos((current) => [...current.filter((row) => row.pending), ...loaded])
         }
       })
       .catch((caught: unknown) => {
@@ -56,7 +56,9 @@ export function useTodos(): UseTodos {
 
   const addTodo = useCallback(async (description: string): Promise<boolean> => {
     const trimmed = description.trim()
-    if (trimmed.length < 1 || trimmed.length > DESCRIPTION_MAX_LENGTH) {
+    // The server counts code points, so the client must not count UTF-16 code units.
+    const length = [...trimmed].length
+    if (length < 1 || length > DESCRIPTION_MAX_LENGTH) {
       return false
     }
 
