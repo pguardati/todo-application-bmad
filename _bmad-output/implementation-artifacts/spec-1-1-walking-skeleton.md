@@ -2,7 +2,7 @@
 title: 'Story 1.1 — Walking Skeleton: Runnable, Testable, Deployable Shell'
 type: 'feature'
 created: '2026-08-29'
-status: 'in-progress'
+status: 'in-review'
 baseline_revision: 'c26724b28db53e03fb78eb892f6e695de3a57fa4'
 review_loop_iteration: 0
 followup_review_recommended: false

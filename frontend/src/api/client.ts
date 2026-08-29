@@ -24,7 +24,16 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
-    const body = (await response.json()) as ApiError
+    let body: ApiError | null = null
+    try {
+      body = (await response.json()) as ApiError
+    } catch {
+      // An edge error (nginx 502/504) answers with HTML, not the AD-4 envelope.
+      body = null
+    }
+    if (!body?.message || !body?.error) {
+      throw new ApiRequestError(NETWORK_ERROR_MESSAGE, 'NETWORK_ERROR')
+    }
     throw new ApiRequestError(body.message, body.error)
   }
 

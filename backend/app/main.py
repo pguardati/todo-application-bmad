@@ -47,6 +47,12 @@ def create_app() -> FastAPI:
     async def handle_validation_error(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
+        logger.warning(
+            "Request validation failed for %s %s: %s",
+            request.method,
+            request.url.path,
+            exc.errors(),
+        )
         return JSONResponse(
             status_code=400,
             content={"error": "VALIDATION_ERROR", "message": "Invalid request."},

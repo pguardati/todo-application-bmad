@@ -68,6 +68,11 @@ def error_client(engine) -> AsyncClient:
     def missing() -> None:
         raise NotFoundError("Todo not found")
 
+    @probe_app.post("/api/probe/persist")
+    def persist(body: Body, session: Annotated[Session, Depends(get_session)]) -> dict[str, str]:
+        session.add(Todo(description=str(body.count)))
+        return {"status": "added"}
+
     @probe_app.get("/api/probe/boom")
     def boom(session: Annotated[Session, Depends(get_session)]) -> None:
         session.add(Todo(description="uncommitted"))
@@ -117,3 +122,96 @@ def test_current_scope_is_unset_in_v1() -> None:
     from app.deps import current_scope
 
     assert current_scope() is None
+
+
+@pytest.mark.asyncio
+async def test_session_commits_on_success(error_client: AsyncClient, engine) -> None:
+    from sqlmodel import Session, select
+
+    from app.models import Todo
+
+    async with error_client as http:
+        response = await http.post("/api/probe/persist", json={"count": 7})
+
+    assert response.status_code == 200
+
+    with Session(engine) as session:
+        rows = session.exec(select(Todo)).all()
+    assert [row.description for row in rows] == ["7"]
+
+
+def test_todo_read_serializes_camel_case_with_a_utc_offset() -> None:
+    from datetime import UTC, datetime
+
+    from app.schemas import TodoCreate, TodoRead
+
+    read = TodoRead(
+        id="7f9d0a3e-0000-4000-8000-000000000000",
+        description="Buy groceries",
+        completed=False,
+        created_at=datetime(2026, 8, 29, 12, 30, 45, tzinfo=UTC),
+    )
+
+    assert set(read.model_dump(by_alias=True)) == {"id", "description", "completed", "createdAt"}
+    assert '"createdAt":"2026-08-29T12:30:45Z"' in read.model_dump_json(by_alias=True)
+    assert TodoCreate.model_validate({"description": "Reply to Marco"}).description == (
+        "Reply to Marco"
+    )
+
+
+def test_naive_timestamps_are_stamped_utc() -> None:
+    from datetime import UTC, datetime
+
+    from app.schemas import TodoRead
+
+    read = TodoRead(
+        id="7f9d0a3e-0000-4000-8000-000000000000",
+        description="Buy groceries",
+        completed=False,
+        created_at=datetime(2026, 8, 29, 12, 30, 45),
+    )
+
+    assert read.created_at.tzinfo is not None
+    assert read.created_at.utcoffset() == datetime.now(UTC).utcoffset()
+    assert read.model_dump_json(by_alias=True).endswith('"createdAt":"2026-08-29T12:30:45Z"}')
+
+
+def test_persisted_timestamps_survive_the_round_trip_with_an_offset(engine) -> None:
+    from sqlmodel import Session, select
+
+    from app.models import Todo
+    from app.schemas import TodoRead
+
+    with Session(engine) as session:
+        session.add(Todo(description="Fix the auth bug"))
+        session.commit()
+
+    with Session(engine) as session:
+        row = session.exec(select(Todo)).one()
+
+    assert row.created_at.tzinfo is None
+    assert TodoRead.model_validate(row).model_dump_json(by_alias=True).count("Z") == 1
+
+
+def test_init_db_is_idempotent(database_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    from sqlalchemy import inspect
+    from sqlmodel import Session, create_engine, select
+
+    import app.db as db
+    from app.models import Todo
+
+    fresh = create_engine(database_url, connect_args={"check_same_thread": False})
+    monkeypatch.setattr(db, "engine", fresh)
+
+    db.init_db()
+    after_first = sorted(inspect(fresh).get_table_names())
+    db.init_db()
+    after_second = sorted(inspect(fresh).get_table_names())
+
+    assert after_first == ["todo"]
+    assert after_second == after_first
+
+    with Session(fresh) as session:
+        assert session.exec(select(Todo)).all() == []
+
+    fresh.dispose()

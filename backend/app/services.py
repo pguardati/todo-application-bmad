@@ -12,5 +12,6 @@ def check_health(session: Session) -> dict[str, str]:
         repository.check_connection(session)
     except Exception:
         logger.exception("Health check database round-trip failed")
+        session.rollback()
         return {"status": "error", "database": "error"}
     return {"status": "ok", "database": "ok"}

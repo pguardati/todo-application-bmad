@@ -50,3 +50,30 @@ describe('request', () => {
     expect((error as ApiRequestError).code).toBe('NETWORK_ERROR')
   })
 })
+
+describe('request against a non-envelope error body', () => {
+  it('falls back to the local message when the edge answers with HTML', async () => {
+    stubFetch(
+      async () =>
+        new Response('<html><body><h1>502 Bad Gateway</h1></body></html>', {
+          status: 502,
+          headers: { 'Content-Type': 'text/html' },
+        }),
+    )
+
+    const error = await request('/health').catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(ApiRequestError)
+    expect((error as ApiRequestError).message).toBe(NETWORK_ERROR_MESSAGE)
+    expect((error as ApiRequestError).code).toBe('NETWORK_ERROR')
+  })
+
+  it('falls back when the body is JSON but not the AD-4 envelope', async () => {
+    stubFetch(async () => new Response(JSON.stringify({ detail: 'nope' }), { status: 500 }))
+
+    await expect(request('/health')).rejects.toMatchObject({
+      message: NETWORK_ERROR_MESSAGE,
+      code: 'NETWORK_ERROR',
+    })
+  })
+})

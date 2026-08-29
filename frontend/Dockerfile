@@ -20,4 +20,4 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 8080
 
 HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=10 \
-    CMD curl -fsS http://localhost:8080/ || exit 1
+    CMD curl -fsS http://localhost:8080/ && curl -fsS http://localhost:8080/api/health || exit 1

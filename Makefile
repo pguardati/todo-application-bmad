@@ -11,13 +11,14 @@ help:
 
 install: ## Install backend, frontend and e2e dependencies
 	cd $(BACKEND) && uv sync --group dev
-	cd $(FRONTEND) && npm install --include=dev
-	cd $(E2E) && npm install --include=dev && npx playwright install --with-deps chromium
+	cd $(FRONTEND) && npm ci --include=dev
+	cd $(E2E) && npm ci --include=dev && npx playwright install --with-deps chromium
 
 dev: ## Run the backend on 8000 and the Vite dev server on 5173
-	cd $(BACKEND) && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload & \
-	cd $(FRONTEND) && npm run dev; \
-	kill %1 2>/dev/null || true
+	cd $(BACKEND) && uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload & \
+	api_pid=$$!; \
+	trap 'kill $$api_pid 2>/dev/null' EXIT INT TERM; \
+	cd $(FRONTEND) && npm run dev
 
 lint: ## Lint the backend (Ruff) and typecheck the frontend
 	cd $(BACKEND) && uv run ruff check . && uv run ruff format --check .
