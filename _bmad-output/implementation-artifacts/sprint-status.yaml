@@ -29,17 +29,65 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-29-2026 12:05
-last_updated: 08-29-2026 17:55
+last_updated: 08-29-2026 18:55
 project: bmad-todo-application-typescript
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 development_status:
-  epic-1: in-progress
+  epic-1: done
   1-1-walking-skeleton-runnable-testable-deployable-shell: done
   1-2-view-the-todo-board: done
   1-3-add-a-todo: done
   1-4-complete-and-delete-a-todo: done
   1-5-intentional-empty-state: done
   1-6-error-handling-and-retry: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
+action_items:
+  - id: "epic-1-retro-item-1-fix-the-reload-create-race-in-usetodos-l"
+    epic: 1
+    action: "Fix the reload/create race in useTodos.load() so a settled optimistic
+      row is not dropped by an in-flight reload, and add the missing hook test"
+    owner: "dev"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-29.md"
+  - id: "epic-1-retro-item-2-extract-the-duplicated-e2e-seed-clear-pr"
+    epic: 1
+    action: "Extract the duplicated E2E seed/clear prologue into a shared fixture
+      and reset via the API per AD-11 (or reconcile AD-11)"
+    owner: "dev"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-29.md"
+  - id: "epic-1-retro-item-3-add-the-axe-core-accessibility-assertion"
+    epic: 1
+    action: "Add the axe-core accessibility assertion to the E2E board journey, or
+      reconcile AD-11 to record agentic QA as the accessibility layer"
+    owner: "dev"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-29.md"
+  - id: "epic-1-retro-item-4-split-backend-tests-test_health-py-by-su"
+    epic: 1
+    action: "Split backend/tests/test_health.py by subject and move the error_client
+      probe app into conftest.py with async teardown"
+    owner: "dev"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-29.md"
+  - id: "epic-1-retro-item-5-change-the-responsive-breakpoint-to-max"
+    epic: 1
+    action: "Change the responsive breakpoint to max-width 639.98px to match UX-DR9"
+    owner: "dev"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-29.md"
+  - id: "epic-1-retro-item-6-push-main-and-close-prs-1-6-still-open-a"
+    epic: 1
+    action: "Push main and close PRs #1-#6, still open against their stacked bases"
+    owner: "Pietroguardati"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-29.md"
+  - id: "epic-1-retro-item-7-surface-story-deferred-entries-into-spri"
+    epic: 1
+    action: "Surface story deferred entries into sprint-status action items at story
+      close so a twice-deferred defect escalates"
+    owner: "process"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-29.md"
