@@ -187,16 +187,22 @@ So that every subsequent slice has somewhere to land and proves itself automatic
 
 **Tests:**
 
-- **Unit** — `Settings` resolves defaults with no environment variables present (the only branching rule in the story worth isolating; AD-11).
-- **Integration** — `backend/tests/test_health.py`: `GET /api/health` returns 200 with both keys against a real temporary SQLite file; returns 503 when the database round-trip fails. `conftest.py` establishes the per-test temp-file database fixture that all later stories reuse.
-- **E2E** — none. This story has no user journey; the Playwright harness (`playwright.config.ts`, ports, `test` profile wiring) is created and proven by running an empty-but-passing suite.
-- **Ad-hoc** — `make dev` on a clean clone, confirm the black canvas loads at `localhost:5173` and `/api/health` answers through the proxy; `docker compose --profile test up` reaches healthy; `make db-reset` recreates the database file.
-- **Agentic → `/qa/story-1.1.md`**
-  - *Performance:* cold `make dev` startup time and `/api/health` p95 latency recorded as the baseline for NFR-1.
-  - *Coverage:* both gates fire — confirm `make ci` fails when coverage is forced below 70% and passes at the story's real number.
-  - *Accessibility:* axe-core clean on the empty shell; document-level basics present (`lang`, title, one landmark).
-  - *Security:* no committed secret, `.env` ignored, both containers non-root, no `text()` or string-built SQL, no `dangerouslySetInnerHTML` (AD-16).
-  - *Functional (Chrome MCP):* drive a real Chrome to `localhost:5173`, confirm the shell renders on the black canvas with zero console errors and zero failed network requests.
+| Layer | Test | Asserts |
+|---|---|---|
+| Unit | `Settings` defaults | Configuration resolves with no environment variables present — the only branching rule in this story worth isolating (AD-11). |
+| Integration | `test_health.py` — healthy | `GET /api/health` returns `200 {"status":"ok","database":"ok"}` against a real temporary SQLite file. |
+| Integration | `test_health.py` — degraded | Returns `503` with the same two keys when the database round-trip fails. |
+| Integration | `conftest.py` fixture | Establishes the per-test temp-file database fixture that every later story reuses. |
+| E2E | none | This story has no user journey. The Playwright harness (`playwright.config.ts`, ports, `test` profile wiring) is created and proven by running an empty-but-passing suite. |
+| Ad-hoc | Clean-clone bring-up | `make install` then `make dev` on a fresh clone: black canvas at `localhost:5173`, `/api/health` answers through the proxy. |
+| Ad-hoc | Compose and reset | `docker compose --profile test up` reaches healthy; `make db-reset` recreates the database file. |
+| Agentic · performance | Startup and health baseline | Cold `make dev` startup time and `/api/health` p95 latency recorded as the NFR-1 baseline. |
+| Agentic · coverage | Gates actually fire | `make ci` fails when coverage is forced below 70% and passes at the story's real number (AD-13). |
+| Agentic · accessibility | Empty shell | axe-core clean; document basics present — `lang`, title, one landmark. |
+| Agentic · security | Baseline sweep | No committed secret, `.env` ignored, both containers non-root, no `text()` or string-built SQL, no `dangerouslySetInnerHTML` (AD-16). |
+| Agentic · functional (Chrome MCP) | Shell in real Chrome | Shell renders on the black canvas at `localhost:5173` with zero console errors and zero failed network requests. |
+
+Report → `/qa/story-1.1.md`
 
 ---
 
@@ -244,18 +250,24 @@ So that I know what is still open and what I have finished without doing anythin
 
 **Tests:**
 
-- **Unit** — none. Listing has no branching rule that integration does not already cover (AD-11 forbids padding this layer).
-- **Integration**
-  - Backend (`test_todos_api.py`): `GET /api/todos` returns 200 with a bare array ordered `createdAt` descending against a real temp SQLite file; returns `[]` when empty; payload keys are camelCase and exclude `userId`.
-  - Frontend (Vitest + Testing Library, stubbed `api/client`): `useTodos` returns loading then partitioned `active`/`completed`; the board renders a loading indicator before resolution; completed rows carry strikethrough and the checked accessible state; components receive already-partitioned props and never re-sort.
-- **E2E** — `e2e/tests/view-board.spec.ts`: seed two active and one completed todo through the API, load the board, assert TODO shows two rows and DONE shows one with strikethrough, in `createdAt`-descending order; the spec resets the rows it created through the API and depends on no other spec (AD-11).
-- **Ad-hoc** — resize a real browser through the 640px breakpoint and down to 320px; confirm the columns stack with TODO first and nothing clips or overflows.
-- **Agentic → `/qa/story-1.2.md`**
-  - *Performance:* p95 `GET /api/todos` on localhost under 500ms with a realistic row count; time to first meaningful render recorded (NFR-1).
-  - *Coverage:* both gates still ≥70%; report the per-file number for `useTodos.ts` and `repository.py` specifically.
-  - *Accessibility:* axe-core clean on the populated board; verify completion is conveyed by strikethrough plus checkbox state plus column placement, not color alone; verify Tab order through the list controls is sensible and every control has an accessible name (UX-DR8, NFR-5).
-  - *Security:* a todo description containing `<script>` and HTML entities renders as literal text via React escaping only; no `dangerouslySetInnerHTML`; the list query uses SQLModel expressions with no string concatenation (AD-16).
-  - *Functional (Chrome MCP):* drive real Chrome against the populated board — confirm both columns, correct ordering, strikethrough on the completed row, zero console errors, and only relative `/api/*` requests on the wire (AD-5).
+| Layer | Test | Asserts |
+|---|---|---|
+| Unit | none | Listing has no branching rule that integration does not already cover; AD-11 forbids padding this layer. |
+| Integration · backend | `GET /api/todos` populated | `200` with a bare array ordered `createdAt` descending, against a real temp SQLite file. |
+| Integration · backend | Payload shape | Keys are camelCase `{id, description, completed, createdAt}` and `userId` is absent (AD-3, AD-15). |
+| Integration · frontend | `useTodos` partition | Hook returns loading, then `active` / `completed` already partitioned (AD-6). |
+| Integration · frontend | Loading render | Board shows a loading indicator before the fetch resolves, never a blank page (FR-1). |
+| Integration · frontend | Completed row | Renders with strikethrough and the checked accessible state (FR-2). |
+| Integration · frontend | Presentational components | Components consume pre-partitioned props and never re-filter or re-sort (AD-6). |
+| E2E | `view-board.spec.ts` | Seed two active and one completed todo via the API; TODO shows two rows, DONE shows one with strikethrough, in `createdAt`-descending order. Spec resets its own rows and depends on no other spec (AD-11). |
+| Ad-hoc | Breakpoint sweep | Resize a real browser through 640px and down to 320px: columns stack with TODO first, nothing clips or overflows. |
+| Agentic · performance | List latency and render | p95 `GET /api/todos` under 500ms on localhost with a realistic row count; time to first meaningful render recorded (NFR-1). |
+| Agentic · coverage | Per-file numbers | Both gates ≥70%; report the specific numbers for `useTodos.ts` and `repository.py`. |
+| Agentic · accessibility | Populated board | axe-core clean; completion conveyed by strikethrough plus checkbox state plus column placement, not color alone; Tab order through list controls sensible and every control named (UX-DR8, NFR-5). |
+| Agentic · security | Injection surface | A description containing `<script>` and HTML entities renders as literal text via React escaping only; no `dangerouslySetInnerHTML`; the list query uses SQLModel expressions with no string concatenation (AD-16). |
+| Agentic · functional (Chrome MCP) | Board in real Chrome | Both columns, correct ordering, strikethrough on the completed row, zero console errors, and only relative `/api/*` requests on the wire (AD-5). |
+
+Report → `/qa/story-1.2.md`
 
 ---
 
@@ -306,18 +318,28 @@ So that I can capture something before I forget it, with no friction.
 
 **Tests:**
 
-- **Unit** — service-level description normalization: trim-then-validate boundary cases at 0, 1, 200, and 201 characters (a genuine branch worth isolating; AD-11).
-- **Integration**
-  - Backend: `POST /api/todos` returns 201 with a UUIDv4 id and server `createdAt`; empty, whitespace-only, and 201-character descriptions each return 400 `VALIDATION_ERROR` in the one envelope; a malformed body returns 400 not 422; the created row is retrievable at the head of `GET /api/todos`.
-  - Frontend: Enter and `+` click both submit; the optimistic row appears at the top with controls disabled; the server row replaces it without duplication; empty and over-length input produce no `api/client` call at all; on stubbed failure only that row is reverted, an error is surfaced, and the input text is preserved.
-- **E2E** — `e2e/tests/create-todo.spec.ts`: type a description, press Enter, assert the row appears at the top of TODO, then reload and assert it persisted; the spec deletes its own row through the API afterwards.
-- **Ad-hoc** — paste a 250-character string and confirm silent rejection with no layout shift; confirm the focus ring is visible on `+` when tabbing.
-- **Agentic → `/qa/story-1.3.md`**
-  - *Performance:* the optimistic row is on screen within 100ms of submit (NFR-1); p95 `POST /api/todos` under 500ms on localhost.
-  - *Coverage:* both gates ≥70%; every optimistic-rollback branch in `useTodos.ts` is exercised, with the specific uncovered lines listed if any remain.
-  - *Accessibility:* axe-core clean with the add bar focused and after submit; verify the `Add todo` accessible name, the accent focus-visible ring, and that silent rejection does not leave a screen-reader user with no feedback path.
-  - *Security:* a description of `<img src=x onerror=alert(1)>` is stored and rendered as literal text; the server rejects over-length input even when the client check is bypassed by calling the API directly; the 400 response body carries no stack trace, SQL, or echo of the request body (AD-4, AD-16).
-  - *Functional (Chrome MCP):* in real Chrome, add three todos in sequence and confirm each lands at the top in reverse-chronological order, the input clears each time, and the console and network log stay clean.
+| Layer | Test | Asserts |
+|---|---|---|
+| Unit | Description normalization | Trim-then-validate boundary cases at 0, 1, 200, and 201 characters — a genuine branch worth isolating (AD-10, AD-11). |
+| Integration · backend | `POST /api/todos` success | `201` with a server-generated UUIDv4 `id` and server-set `createdAt` (AD-7). |
+| Integration · backend | Validation rejections | Empty, whitespace-only, and 201-character descriptions each return `400 VALIDATION_ERROR` in the one envelope (AD-4, AD-10). |
+| Integration · backend | Malformed body | Returns `400`, not FastAPI's default `422` (AD-4). |
+| Integration · backend | Round-trip | The created row is retrievable at the head of `GET /api/todos`. |
+| Integration · frontend | Both submit paths | Enter and `+` click each create exactly one todo. |
+| Integration · frontend | Optimistic insert | Row appears at the top with controls disabled while it carries a temp key (AD-7). |
+| Integration · frontend | Confirmation swap | The server row replaces the optimistic row with no duplicate (AD-7). |
+| Integration · frontend | Client-side rejection | Empty and over-length input produce no `api/client` call at all (FR-3). |
+| Integration · frontend | Create rollback | On stubbed failure only that row is reverted, an error is surfaced, and the input text is preserved (FR-4, AD-6). |
+| E2E | `create-todo.spec.ts` | Type a description, press Enter, row appears at the top of TODO; reload and it persisted. Spec deletes its own row via the API. |
+| Ad-hoc | Over-length paste | Pasting a 250-character string is silently rejected with no layout shift. |
+| Ad-hoc | Focus ring | The accent focus-visible ring is visible on `+` when tabbing (UX-DR8). |
+| Agentic · performance | Optimistic latency | The optimistic row is on screen within 100ms of submit; p95 `POST /api/todos` under 500ms on localhost (NFR-1). |
+| Agentic · coverage | Rollback branches | Both gates ≥70%; every optimistic-rollback branch in `useTodos.ts` exercised, with any uncovered lines listed explicitly. |
+| Agentic · accessibility | Add bar | axe-core clean with the add bar focused and after submit; `Add todo` accessible name present; silent rejection does not leave a screen-reader user without a feedback path. |
+| Agentic · security | Stored XSS and bypass | `<img src=x onerror=alert(1)>` is stored and rendered as literal text; the server rejects over-length input when the API is called directly, bypassing the client check; the 400 body carries no stack trace, SQL, or request echo (AD-4, AD-16). |
+| Agentic · functional (Chrome MCP) | Sequential adds | In real Chrome, three adds each land at the top in reverse-chronological order, the input clears each time, console and network log stay clean. |
+
+Report → `/qa/story-1.3.md`
 
 ---
 
@@ -368,18 +390,28 @@ So that my board reflects the work I have actually finished and drops what no lo
 
 **Tests:**
 
-- **Unit** — none beyond what integration covers; toggle is a field write with no branching domain rule (AD-11).
-- **Integration**
-  - Backend: `PATCH` toggles `completed` both directions and returns the updated resource; `PATCH` on an unknown id returns 404 `NOT_FOUND`; `PATCH` attempting to change `description` does not change it; `DELETE` returns 204 and the row is gone from a subsequent list; `DELETE` on an unknown id returns 404. All against a real temp SQLite file.
-  - Frontend: checkbox click moves the row between columns optimistically and calls the client once; `×` removes the row optimistically; on stubbed failure the toggled row returns to its original column and the deleted row reappears, in both cases leaving a second, concurrently-mutated todo untouched (the explicit AD-6 anti-snapshot assertion).
-- **E2E** — `e2e/tests/complete-and-delete.spec.ts`: seed a todo through the API, check it and assert it moves to DONE, uncheck and assert it returns to TODO, check it again, delete it, reload, and assert it is gone; the spec resets its own rows.
-- **Ad-hoc** — on a touch viewport, confirm the checkbox and `×` are individually tappable without mis-hits, and that `×` reads as neutral rather than destructive-red.
-- **Agentic → `/qa/story-1.4.md`**
-  - *Performance:* both mutations reflect in the UI within 100ms (NFR-1); p95 `PATCH` and `DELETE` under 500ms on localhost.
-  - *Coverage:* both gates ≥70%; confirm every rollback branch for toggle and delete is covered, including the concurrent-mutation case.
-  - *Accessibility:* axe-core clean after a toggle and after a delete; verify checkbox role and state announcements, the `Delete` accessible name, keyboard operation of both controls, and that focus is not lost or trapped when a row is removed from the DOM.
-  - *Security:* `PATCH` with an unexpected extra field or a mismatched type is rejected without mass-assignment; id values are never interpolated into SQL; 404 bodies reveal no path, SQL, or stack trace (AD-4, AD-16).
-  - *Functional (Chrome MCP):* in real Chrome, toggle a row twice and delete it, refreshing between steps to confirm persistence each time, with a clean console and network log.
+| Layer | Test | Asserts |
+|---|---|---|
+| Unit | none | Toggle is a field write with no branching domain rule; integration covers it (AD-11). |
+| Integration · backend | `PATCH` both directions | Toggles `completed` true and false, returning the updated resource (FR-5). |
+| Integration · backend | `PATCH` unknown id | Returns `404 NOT_FOUND` in the one envelope (AD-4). |
+| Integration · backend | `PATCH` description immutable | An attempt to change `description` does not change it (FR-7). |
+| Integration · backend | `DELETE` success | Returns `204` and the row is absent from a subsequent list (FR-6). |
+| Integration · backend | `DELETE` unknown id | Returns `404 NOT_FOUND` (AD-4). |
+| Integration · frontend | Optimistic toggle | Checkbox click moves the row between columns immediately and calls the client exactly once. |
+| Integration · frontend | Optimistic delete | `×` removes the row immediately. |
+| Integration · frontend | Toggle rollback | On stubbed failure the row returns to its original column. |
+| Integration · frontend | Delete rollback | On stubbed failure the row reappears in place. |
+| Integration · frontend | Anti-snapshot guard | Both rollbacks leave a second, concurrently-mutated todo untouched — the assertion that catches a whole-list snapshot-restore implementation (AD-6). |
+| E2E | `complete-and-delete.spec.ts` | Seed a todo via the API; check it → moves to DONE; uncheck → returns to TODO; check again, delete, reload, gone. Spec resets its own rows. |
+| Ad-hoc | Touch targets | On a touch viewport the checkbox and `×` are individually tappable without mis-hits, and `×` reads as neutral rather than destructive-red (UX-DR5). |
+| Agentic · performance | Mutation latency | Both mutations reflect in the UI within 100ms; p95 `PATCH` and `DELETE` under 500ms on localhost (NFR-1). |
+| Agentic · coverage | Rollback branches | Both gates ≥70%; every toggle and delete rollback branch covered, including the concurrent-mutation case. |
+| Agentic · accessibility | Post-mutation states | axe-core clean after a toggle and after a delete; checkbox role and state announced; `Delete` accessible name present; both controls keyboard-operable; focus is neither lost nor trapped when a row leaves the DOM. |
+| Agentic · security | Mass assignment and ids | `PATCH` with an unexpected extra field or mismatched type is rejected without mass-assignment; id values are never interpolated into SQL; 404 bodies reveal no path, SQL, or stack trace (AD-4, AD-16). |
+| Agentic · functional (Chrome MCP) | Toggle and delete in real Chrome | Toggle a row twice then delete it, refreshing between steps to confirm persistence each time, with a clean console and network log. |
+
+Report → `/qa/story-1.4.md`
 
 ---
 
@@ -416,18 +448,21 @@ So that I trust the app and know exactly where to start.
 
 **Tests:**
 
-- **Unit** — none; there is no isolable rule here, only composed presentation (AD-11).
-- **Integration**
-  - Backend: `GET /api/todos` on an empty database returns 200 and `[]` (asserted here as the empty-state contract, distinct from story 1.2's populated case).
-  - Frontend: with the stubbed client returning `[]`, both column labels render, no empty-state copy string is present in the DOM, the add bar holds focus, and neither the loading indicator nor an error banner is shown; deleting the last todo returns the board to that same rendering.
-- **E2E** — `e2e/tests/empty-state.spec.ts`: ensure no todos exist via the API, load the board, assert both labels are present with zero rows and no empty-state copy, then add one todo and assert the board transitions cleanly to populated.
-- **Ad-hoc** — a genuine cold open on an empty database: confirm the screen reads as an intentional surface rather than a failed load, and that the caret is already in the input.
-- **Agentic → `/qa/story-1.5.md`**
-  - *Performance:* time to interactive on an empty cold open; confirm no layout shift when the first row is added (NFR-1).
-  - *Coverage:* both gates ≥70%; confirm the empty branch of the board rendering is covered.
-  - *Accessibility:* axe-core clean on the empty board; confirm the empty columns are not announced as broken or meaningless structure, the section labels are reachable, and initial focus placement is sensible for a screen-reader user (NFR-5, UX-DR8).
-  - *Security:* the empty response leaks no schema detail, row count metadata, or internal identifier (AD-4).
-  - *Functional (Chrome MCP):* in real Chrome against an empty database, confirm both labels render on the black canvas, the input is focused, zero console errors, and no failed requests.
+| Layer | Test | Asserts |
+|---|---|---|
+| Unit | none | No isolable rule here, only composed presentation (AD-11). |
+| Integration · backend | `GET /api/todos` empty | Returns `200` and `[]` — never 404, never an error. The empty-state contract, distinct from story 1.2's populated case (FR-1). |
+| Integration · frontend | Empty board render | With the stubbed client returning `[]`, both column labels render, no empty-state copy string is in the DOM, the add bar holds focus, and neither the loading indicator nor an error banner is shown (UX-DR6). |
+| Integration · frontend | Return to empty | Deleting the last todo returns the board to that same rendering, with no residual error or loading state (FR-6). |
+| E2E | `empty-state.spec.ts` | Ensure no todos exist via the API; both labels present with zero rows and no empty-state copy; add one todo and the board transitions cleanly to populated. |
+| Ad-hoc | Genuine cold open | On an empty database the screen reads as an intentional surface rather than a failed load, and the caret is already in the input. |
+| Agentic · performance | Empty cold open | Time to interactive recorded; no layout shift when the first row is added (NFR-1). |
+| Agentic · coverage | Empty branch | Both gates ≥70%; the empty branch of board rendering is covered. |
+| Agentic · accessibility | Empty board | axe-core clean; empty columns are not announced as broken or meaningless structure; section labels reachable; initial focus placement sensible for a screen-reader user (NFR-5, UX-DR8). |
+| Agentic · security | Empty response | Leaks no schema detail, row-count metadata, or internal identifier (AD-4). |
+| Agentic · functional (Chrome MCP) | Empty board in real Chrome | Both labels render on the black canvas, the input is focused, zero console errors, no failed requests. |
+
+Report → `/qa/story-1.5.md`
 
 ---
 
@@ -473,18 +508,26 @@ So that I always know whether my action took effect and never face a blank broke
 
 **Tests:**
 
-- **Unit** — the `AppError` → HTTP status and code mapping table, asserted exhaustively over the hierarchy (a real branching rule; AD-11).
-- **Integration**
-  - Backend: each error code is produced through a real request — 400 `VALIDATION_ERROR` from an invalid create, 404 `NOT_FOUND` from an unknown id on `PATCH` and `DELETE`, 500 `INTERNAL_ERROR` from a forced service failure; every body matches the envelope exactly; the 500 body carries a generic message while the detail appears in the log; a `RequestValidationError` surfaces as 400, never 422.
-  - Frontend: a failed initial fetch renders the server `message` verbatim with a retry control, and retry re-fetches and clears the error on success; a total network failure renders the single local fallback string; a failed create, toggle, and delete each surface a recoverable error while reverting only the affected todo.
-- **E2E** — `e2e/tests/error-handling.spec.ts`: intercept `/api/todos` to fail on load, assert the error message and retry are visible and the list area is not blank, then let the retry succeed and assert the board renders; the spec touches no persisted rows.
-- **Ad-hoc** — stop the backend with the app open, attempt an add, and confirm the typed text survives, the message is comprehensible to a non-developer, and restarting the backend plus retry recovers without a reload.
-- **Agentic → `/qa/story-1.6.md`**
-  - *Performance:* the error surfaces within 100ms of the failed response; retry does not stack duplicate in-flight requests (NFR-1).
-  - *Coverage:* both gates ≥70%; confirm every `AppError` subclass and every client error path, including the network-failure fallback, is covered.
-  - *Accessibility:* axe-core clean in the error state; verify the message is announced to a screen reader, focus moves or is otherwise reachable, retry is Enter-operable, and the state is not conveyed by color alone (NFR-5).
-  - *Security:* force a 500 and confirm the response body has no stack trace, SQL, file path, or request echo, and that the log entry contains the exception but no request body; confirm no error path leaks a database file path or dependency version (AD-4, AD-16).
-  - *Functional (Chrome MCP):* in real Chrome, block `/api/*`, load the app, confirm the error and retry render on the black canvas with the list area intact; unblock, click retry, and confirm normal rendering with a clean console.
+| Layer | Test | Asserts |
+|---|---|---|
+| Unit | `AppError` mapping | The `AppError` → HTTP status and code table, asserted exhaustively over the hierarchy — a real branching rule (AD-4, AD-11). |
+| Integration · backend | `400 VALIDATION_ERROR` | Produced through a real invalid create, body matching the envelope exactly. |
+| Integration · backend | `404 NOT_FOUND` | Produced through a real unknown id on both `PATCH` and `DELETE`. |
+| Integration · backend | `500 INTERNAL_ERROR` | Produced by a forced service failure; body carries a generic message while the detail appears in the log (AD-4, AD-16). |
+| Integration · backend | 422 remap | A `RequestValidationError` surfaces as `400`, never `422` (AD-4). |
+| Integration · frontend | Failed initial fetch | Renders the server `message` verbatim alongside a retry control, list area not blank (FR-1). |
+| Integration · frontend | Retry recovery | Retry re-fetches and clears the error on success. |
+| Integration · frontend | Network fallback | A total network failure renders the single local fallback string — the only copy the client authors (AD-4). |
+| Integration · frontend | Mutation errors | Failed create, toggle, and delete each surface a recoverable error while reverting only the affected todo (AD-6, NFR-2). |
+| E2E | `error-handling.spec.ts` | Intercept `/api/todos` to fail on load: error message and retry visible, list area not blank; let retry succeed and the board renders. Spec touches no persisted rows. |
+| Ad-hoc | Backend down | Stop the backend with the app open and attempt an add: typed text survives, the message is comprehensible to a non-developer, and restarting plus retry recovers without a reload. |
+| Agentic · performance | Error latency | The error surfaces within 100ms of the failed response; retry does not stack duplicate in-flight requests (NFR-1). |
+| Agentic · coverage | Error paths | Both gates ≥70%; every `AppError` subclass and every client error path, including the network-failure fallback, is covered. |
+| Agentic · accessibility | Error state | axe-core clean; the message is announced to a screen reader, focus moves or is otherwise reachable, retry is Enter-operable, and the state is not conveyed by color alone (NFR-5). |
+| Agentic · security | Leakage under failure | A forced 500 body has no stack trace, SQL, file path, or request echo; the log entry contains the exception but no request body; no error path leaks a database file path or dependency version (AD-4, AD-16). |
+| Agentic · functional (Chrome MCP) | Error and recovery in real Chrome | Block `/api/*`, load the app: error and retry render on the black canvas with the list area intact; unblock, click retry, normal rendering with a clean console. |
+
+Report → `/qa/story-1.6.md`
 
 ---
 
