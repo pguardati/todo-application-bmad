@@ -2,10 +2,10 @@
 title: 'Story 1.6 — Error Handling and Retry'
 type: 'feature'
 created: '2026-08-29'
-status: 'in-review' # draft | ready-for-dev | in-progress | in-review | done | blocked
+status: 'done' # draft | ready-for-dev | in-progress | in-review | done | blocked
 baseline_revision: '25a474812f6a972fb422ffd06cff929197851fcd'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
 warnings: [oversized]
@@ -344,3 +344,72 @@ the five journeys order-independent under `make test-e2e`.
 - With the backend stopped and the app open, submit a todo: the typed text survives, the message is
   comprehensible to a non-developer; restart the backend and click retry — the board recovers without
   a page reload.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented change**
+
+Story 1.6 closes the epic. The backend's AD-4 contract already held from 1.1 — one envelope, three
+codes, handler-produced only — so this slice pins it rather than rewriting it: an exhaustive
+`AppError` → (status, code) walk over the imported subclass tree, a forced service failure driven
+through the *shipped* `GET /api/todos` route, and a leakage case proving the 500 body carries no
+stack trace, SQL, file path, dependency version or request echo while the log keeps all of it. The
+real production work is on the client, where a failed load previously left the user with a dead-end
+alert: `useTodos` now owns a `load()` guarded by an in-flight ref and exposes it as `retry()`, so a
+re-entrant activation coalesces onto the running promise instead of issuing a second fetch, and `App`
+renders the message and an Enter-operable `Retry` button as one announced unit. The loading line is
+suppressed while an error is on screen, so retrying with rows present keeps both columns mounted
+instead of blanking the board and stacking two live regions.
+
+**Files changed**
+
+- `frontend/src/hooks/useTodos.ts` — the mount fetch extracted into `load()` with `mounted` and
+  `inFlight` refs, exposed as `retry`; `setError(null)` on a successful load. Mutation paths untouched.
+- `frontend/src/App.tsx` — the error region is a `div[role="alert"]` holding `<span>{error}</span>`
+  and a `<button type="button">Retry</button>`; the loading line renders only when no error is shown.
+- `frontend/src/styles/app.css` — `.state-line-error` as a wrapping flex row with a nested button
+  rule; existing class names and `var(--token)` values only.
+- `backend/tests/test_errors.py` — the exhaustive mapping walk, with `app.main` imported to force
+  subclass registration.
+- `backend/tests/test_health.py` — the forced-500 leakage/log split, plus the same failure driven
+  through the real route with the router's `list_todos` monkeypatched.
+- `frontend/src/hooks/useTodos.test.ts` — retry recovery, retry coalescing, the network fallback, and
+  an unmount-while-pending case that records setter calls so the guards are load-bearing.
+- `frontend/src/App.test.tsx` — the failed-load case grown to the retry control, retry recovery by
+  mouse and Enter, the in-flight disabled case, and the three mutation-failure cases extended.
+- `e2e/tests/error-handling.spec.ts` — the single new journey, `page.route`-only, persisting nothing.
+- `qa/story-1.6.md` — the five agentic checks with evidence and mutation tables.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — story 1.6 moved to `review`.
+
+**Review findings**
+
+Patches applied: 15 (medium 4, low 11). Deferred: 2 (low 2) — the optimistic-row/retry duplication
+window and the focus drop when the retry button disables or the alert unmounts. Rejected: 12, all low.
+
+Follow-up review recommended: **true** — patched severities were 0 high, 4 medium, 11 low, scoring
+3 x 4 + 1 x 11 = 23, at or above the threshold of 5.
+
+**Verification**
+
+`make ci` exits 0 after the patches: Ruff check and format clean, `tsc --noEmit` clean, backend 43
+passed with coverage 99% (212 statements, 2 missed), frontend 33 passed with 94.53% lines and 92.59%
+branches, and all five Playwright journeys green against the `test` profile, torn down with
+`--volumes`. `grep -rn "JSONResponse\|HTTPException" backend/app/routers` is empty, so every non-2xx
+body comes from the handlers in `main.py`; `NETWORK_ERROR_MESSAGE` is still the only sentence the
+client authors; the styles diff adds no hex literal. Every one of the twelve I/O matrix rows is
+covered by a test that ran and passed. CI is green on PR #6 (run 33267743523), which targets
+`story-1.5-intentional-empty-state` per the epic's stacked-PR rule.
+
+**Residual risks**
+
+- The E2E journey fabricates both the failing and the succeeding response with `page.route`, as the
+  epic's own test row prescribes, so no automated test joins a real backend error to a rendered
+  message; that end-to-end path is evidenced only by the agentic checks in `qa/story-1.6.md`.
+- The two deferred items above remain open, as does the suite-wide absence of axe-core assertions in
+  the Playwright journeys carried over from story 1.5.
+- `retry()` re-lists the board rather than re-issuing a failed mutation, which is the accepted reading
+  of the epic's "dismissible or self-clearing" AC but is not what the word "Retry" promises next to a
+  failed create.
