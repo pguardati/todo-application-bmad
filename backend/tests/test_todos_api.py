@@ -1,5 +1,7 @@
-from datetime import datetime
+from datetime import UTC, datetime
+from uuid import UUID
 
+import pytest
 from httpx import AsyncClient
 from sqlmodel import Session
 
@@ -66,3 +68,67 @@ async def test_rows_belonging_to_another_owner_are_excluded(client: AsyncClient,
     with Session(engine) as session:
         mine = repository.list_todos(session, "other")
     assert [row.description for row in mine] == ["Someone else's todo"]
+
+
+async def test_create_trims_and_returns_the_stored_row(client: AsyncClient, engine) -> None:
+    response = await client.post("/api/todos", json={"description": "  Buy milk  "})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert set(body) == {"id", "description", "completed", "createdAt"}
+    assert body["description"] == "Buy milk"
+    assert body["completed"] is False
+    assert UUID(body["id"]).version == 4
+    created_at = datetime.fromisoformat(body["createdAt"].replace("Z", "+00:00"))
+    assert abs((datetime.now(UTC) - created_at).total_seconds()) < 60
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"description": ""},
+        {"description": "   "},
+        {"description": "x" * 201},
+        {},
+        {"description": 12},
+    ],
+)
+async def test_rejected_bodies_answer_with_the_one_validation_envelope(
+    client: AsyncClient, engine, payload: dict
+) -> None:
+    response = await client.post("/api/todos", json=payload)
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "VALIDATION_ERROR", "message": "Invalid request."}
+
+
+async def test_non_json_body_is_rejected_the_same_way(client: AsyncClient, engine) -> None:
+    response = await client.post(
+        "/api/todos", content="not json", headers={"Content-Type": "application/json"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.parametrize("length", [1, 200])
+async def test_boundary_lengths_are_accepted(client: AsyncClient, engine, length: int) -> None:
+    response = await client.post("/api/todos", json={"description": "x" * length})
+
+    assert response.status_code == 201
+    assert response.json()["description"] == "x" * length
+
+
+async def test_a_created_todo_heads_the_list(client: AsyncClient, engine) -> None:
+    seed(engine)
+    created = (await client.post("/api/todos", json={"description": "Ship it"})).json()
+
+    body = (await client.get("/api/todos")).json()
+
+    assert body[0] == created
+    assert [item["description"] for item in body] == [
+        "Ship it",
+        "Fix the auth bug",
+        "Morning standup",
+        "Buy groceries",
+    ]

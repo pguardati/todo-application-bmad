@@ -160,3 +160,13 @@ body {
   border-bottom: 1px solid var(--color-border);
   margin-bottom: var(--space-4);
 }
+
+.row .btn-icon:disabled,
+.row .btn-icon:disabled:hover {
+  color: var(--color-control);
+  cursor: default;
+}
+
+.row input[type='checkbox']:disabled {
+  cursor: default;
+}

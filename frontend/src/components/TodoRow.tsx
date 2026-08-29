@@ -1,7 +1,7 @@
-import type { Todo } from '../api/types'
+import type { BoardTodo } from '../hooks/useTodos'
 
 interface TodoRowProps {
-  todo: Todo
+  todo: BoardTodo
 }
 
 export default function TodoRow({ todo }: TodoRowProps) {
@@ -11,10 +11,11 @@ export default function TodoRow({ todo }: TodoRowProps) {
         type="checkbox"
         checked={todo.completed}
         readOnly
+        disabled={todo.pending}
         aria-label={todo.completed ? 'Mark incomplete' : 'Mark complete'}
       />
       <span className="label">{todo.description}</span>
-      <button type="button" className="btn-icon" aria-label="Delete">
+      <button type="button" className="btn-icon" aria-label="Delete" disabled={todo.pending}>
         ×
       </button>
     </li>

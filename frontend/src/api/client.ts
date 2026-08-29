@@ -47,3 +47,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export function listTodos(): Promise<Todo[]> {
   return request<Todo[]>('/todos')
 }
+
+export function createTodo(description: string): Promise<Todo> {
+  return request<Todo>('/todos', { method: 'POST', body: JSON.stringify({ description }) })
+}

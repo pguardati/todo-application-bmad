@@ -1,10 +1,10 @@
-import type { Todo } from '../api/types'
+import type { BoardTodo } from '../hooks/useTodos'
 import TodoRow from './TodoRow'
 
 interface TodoColumnProps {
   id: string
   label: string
-  todos: Todo[]
+  todos: BoardTodo[]
 }
 
 export default function TodoColumn({ id, label, todos }: TodoColumnProps) {

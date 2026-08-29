@@ -1,24 +1,13 @@
+import AddBar from './components/AddBar'
 import TodoColumn from './components/TodoColumn'
 import { useTodos } from './hooks/useTodos'
 
 export default function App() {
-  const { active, completed, loading, error } = useTodos()
+  const { active, completed, loading, error, addTodo } = useTodos()
 
   return (
     <main className="app">
-      <div className="add-bar">
-        <button type="button" className="btn-icon" aria-label="Add todo">
-          +
-        </button>
-        <input
-          id="new-todo"
-          name="description"
-          type="text"
-          className="field-input"
-          aria-label="New todo"
-          autoFocus
-        />
-      </div>
+      <AddBar onAdd={addTodo} />
 
       {error && (
         <p className="state-line state-line-error" role="alert">
