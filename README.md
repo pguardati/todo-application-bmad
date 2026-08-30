@@ -1,4 +1,4 @@
-# bmad-todo-application-typescript
+# todo-application-bmad
 
 A personal todo board: a FastAPI + SQLModel backend and a React + Vite client, wired through a
 same-origin `/api` seam.

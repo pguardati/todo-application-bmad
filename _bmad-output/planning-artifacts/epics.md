@@ -8,11 +8,11 @@ inputDocuments:
   - _bmad-output/planning-artifacts/ux-designs/ux-bmad-todo-application-typescript-2026-08-24/EXPERIENCE.md
 ---
 
-# bmad-todo-application-typescript - Epic Breakdown
+# todo-application-bmad - Epic Breakdown
 
 ## Overview
 
-This document provides the complete epic and story breakdown for bmad-todo-application-typescript, decomposing the requirements from the PRD, UX Design, and Architecture into implementable stories.
+This document provides the complete epic and story breakdown for todo-application-bmad, decomposing the requirements from the PRD, UX Design, and Architecture into implementable stories.
 
 ## Requirements Inventory
 
