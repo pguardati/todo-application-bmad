@@ -83,6 +83,7 @@ override. `.env` is git-ignored; `.env.example` carries placeholders only.
   early).
 - Epic creation needed specific prompts to ensure test cases below the acceptance criteria were also defined. BMAD was
   not generating them reliably by default.
+- The given `CLAUDE.md` has been used to contain the tendency of clod to produce overly verbose doctrines and comments.
 
 ### MCP Server Usage
 
