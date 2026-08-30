@@ -35,22 +35,6 @@ make test-frontend
 make test-e2e
 ```
 
-## Make targets
-
-| Target | What it does |
-| --- | --- |
-| `install` | Install backend, frontend and e2e dependencies |
-| `up` | Run the built application on 8080 via the dev compose profile |
-| `dev` | Run the backend on 8000 and the Vite dev server on 5173 |
-| `lint` | Ruff on the backend, TypeScript typecheck on the frontend |
-| `test-backend` | pytest with the 70% line-coverage gate |
-| `test-frontend` | Vitest |
-| `test-e2e` | Playwright against the test compose profile |
-| `test` | All three suites |
-| `coverage` | Both coverage reports with their gates enforced |
-| `db-reset` | Delete the local database file and the dev compose volume |
-| `ci` | `lint` + `coverage` + `test-e2e` — what CI runs |
-
 ## Containers
 
 One `docker-compose.yml` with two profiles:
