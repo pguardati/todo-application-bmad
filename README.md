@@ -2,8 +2,8 @@
 
 ![todo-application-bmad logo](application-ui.png)
 
-A personal todo board: 
-a FastAPI + SQLModel backend and a React + Vite client. 
+A personal todo board:
+a FastAPI + SQLModel backend and a React + Vite client.
 
 ## Prerequisites
 
@@ -55,6 +55,19 @@ evidence. A story is not done without it, alongside a green `make ci`.
 Every backend setting lives in `backend/app/config.py` and has a working local default. Copy
 `.env.example` to `.env` **at the repository root** — that is the path `Settings` reads — to
 override. `.env` is git-ignored; `.env.example` carries placeholders only.
+
+## Success Criteria Scoreboard
+
+| # | Deliverable                                                   | Reference                                                                              |
+|---|---------------------------------------------------------------|----------------------------------------------------------------------------------------|
+| 1 | All Phause 1–2 activities completed with documented learnings | `_bmad-output/planning-artifacts/`, `_bmad-output/implementation-artifacts/`           |
+| 2 | Working application — all CRUD operations                     | `backend/app/`, `frontend/src/`; run with `make up`                                    |
+| 3 | Minimum 70% meaningful code coverage                          | `make test-backend`, `make test-frontend`; `frontend/coverage/`                        |
+| 4 | Minimum 5 passing Playwright E2E tests                        | `e2e/tests/`; run with `make test-e2e`                                                 |
+| 5 | Runs successfully via `docker-compose up`                     | `docker-compose.yml` (profiles `dev`/`test`), `Makefile` target `up`                   |
+| 6 | Zero critical WCAG violations                                 | Accessibility sections in `qa/story-1.<M>.md`                                          |
+| 7 | README with setup instructions **and AI integration log**     | This file: [Run](#run), [Develop](#develop), [AI Integration Log](#ai-integration-log) |
+| 8 | Framework comparison                                          | [Framework Comparison](#framework-comparison)                                          |
 
 ## AI Integration Log
 
