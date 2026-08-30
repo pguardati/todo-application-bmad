@@ -14,17 +14,26 @@ same-origin `/api` seam.
 
 `make install` fails without all four.
 
-## Start
+## Run 
 
 Run the built application in Docker:
 
 ```sh
-make install
 make up
 ```
 
 Open <http://localhost:8080>. Nginx serves the frontend and proxies `/api/*` to the backend.
 
+## Develop 
+
+Run the backend and the frontend development servers:
+
+```sh
+make install
+make test-backend
+make test-frontend
+make test-e2e
+```
 
 ## Make targets
 
