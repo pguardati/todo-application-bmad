@@ -1,7 +1,9 @@
 # todo-application-bmad
 
-A personal todo board: a FastAPI + SQLModel backend and a React + Vite client, wired through a
-same-origin `/api` seam.
+![todo-application-bmad logo](application-ui.png)
+
+A personal todo board: 
+a FastAPI + SQLModel backend and a React + Vite client. 
 
 ## Prerequisites
 
