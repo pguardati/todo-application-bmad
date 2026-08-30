@@ -36,7 +36,7 @@ test-frontend: ## Run frontend tests
 test-e2e: ## Run the Playwright suite against the test compose profile
 	docker compose --profile test up --build --wait --detach
 	cd $(E2E) && npm test; status=$$?; \
-	cd .. && docker compose --profile test down --volumes; \
+	cd .. && docker compose --profile test down; \
 	exit $$status
 
 test: test-backend test-frontend test-e2e ## Run every test suite
@@ -45,8 +45,8 @@ coverage: ## Report coverage for both sides with their gates enforced
 	cd $(BACKEND) && uv run coverage run -m pytest && uv run coverage report
 	cd $(FRONTEND) && npm run coverage
 
-db-reset: ## Delete the local database file and the dev compose volume
+db-reset: ## Delete the local database file and the test compose volume
 	rm -f $(DB_FILE)
-	docker compose --profile dev down --volumes 2>/dev/null || true
+	docker compose --profile test down --volumes 2>/dev/null || true
 
 ci: lint coverage test-e2e ## The full pipeline CI runs

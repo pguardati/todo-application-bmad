@@ -39,8 +39,8 @@ make test-e2e
 
 One `docker-compose.yml` with two profiles:
 
-- `dev` — built images, nginx on 8080 proxying `/api`, SQLite on a named volume. `make up`.
-- `test` — built images, nginx on 8080 proxying `/api`, ephemeral SQLite. `make test-e2e`.
+- `dev` — built images, nginx on 8080 proxying `/api`, SQLite on the `todo-data` named volume.
+- `test` — built images, nginx on 8080 proxying `/api`, SQLite on tmpfs. `make test-e2e`.
 
 ## Per-story QA
 
