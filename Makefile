@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install dev up test test-backend test-frontend test-e2e lint coverage db-reset ci
+.PHONY: help install dev env up test test-backend test-frontend test-e2e lint coverage db-reset ci
 
 BACKEND := backend
 FRONTEND := frontend
@@ -20,7 +20,10 @@ dev: ## Run the backend on 8000 and the Vite dev server on 5173
 	trap 'kill $$api_pid 2>/dev/null' EXIT INT TERM; \
 	cd $(FRONTEND) && npm run dev
 
-up: ## Run the built application on 8080 via the dev compose profile
+env: ## Create .env from .env.example if it does not exist
+	@test -f .env || (cp .env.example .env && echo "created .env from .env.example")
+
+up: env ## Run the built application on 8080 via the dev compose profile
 	docker compose --profile dev up --build
 
 lint: ## Lint the backend (Ruff) and typecheck the frontend
