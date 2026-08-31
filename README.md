@@ -129,14 +129,14 @@ It was a CORS issue and it has been fixed autonomously.
 
 **What couldn't the AI do well? Where was human expertise critical?**  
 First of all, AI struggled to run the BMAD process unsupervised.
-Human oversight was required to orchestrate transitions between phases and to ensure a clean context at each step.
 
-Note:
-The process has been tried to run unsupervised using sub-agents.
-However, the end results turned out to be worse than the supervised one:
+The process has been tried to run unsupervised using sub-agents several times.
+However, the generation loop - without tuning - tends to diverge:
 - One time the loop started writing massive docstrings.
 - Another time the loop generated a massive amount of tests - way more than the ones defined in the epics.md and way
   more than the complexity of the application required.
+ 
+Hence, eventually, transitions between phases have been performed manually.
 
 Secondly, Human intervention has been needed to define architecture, 
 in particular, to select the right model based on the task:
