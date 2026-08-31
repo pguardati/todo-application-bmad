@@ -99,7 +99,7 @@ override. `.env` is git-ignored; `.env.example` carries placeholders only.
   early).
 - Epic creation needed specific prompts to ensure test cases below the acceptance criteria were also defined. BMAD was
   not generating them reliably by default.
-- The given `CLAUDE.md` has been used to contain the tendency of clod to produce overly verbose doctrines and comments.
+- The given `CLAUDE.md` has been used to reduce the tendency of claude to produce overly verbose docstrings and comments.
 
 ### MCP Server Usage
 
@@ -116,41 +116,36 @@ Primarily the Chrome MCP server was used.
 **How did AI assist in generating test cases? What did it miss?**  
 AI was primarily used during epic generation to create test cases based on acceptance criteria.
 However, this process needed refinement:
-sometimes the AI generated an excessive number of tests,
-while at other times it omitted required cases from the requirements.
+few times the AI generated an excessive number of tests,
+while at other times it omitted them completely.
 
 ### Debugging with AI
 
 **Document cases where AI helped debug issues.**  
 `make up` wasn't working, and the application realized by itself where the issue was.
-It was a CORS issue and it fixed it autonomously.
+It was a CORS issue and it has been fixed autonomously.
 
 ### Limitations Encountered
 
 **What couldn't the AI do well? Where was human expertise critical?**  
-First of all, AI could not run the BMAD process entirely unsupervised.
+First of all, AI struggled to run the BMAD process unsupervised.
 Human oversight was required to orchestrate transitions between phases and to ensure a clean context at each step.
-Human input was especially important to understand and guide the BMAD process as it progressed.
 
 Note:
-The process has been tried to run unsupervised using a main agent to delegate sub-agents with strict phase-by-phase
-delegation.
-However, the end results turned out to be worse than the supervised approach.
-For example:
-
-- One time the loop diverged started massive docstrings.
+The process has been tried to run unsupervised using sub-agents.
+However, the end results turned out to be worse than the supervised one:
+- One time the loop started writing massive docstrings.
 - Another time the loop generated a massive amount of tests - way more than the ones defined in the epics.md and way
   more than the complexity of the application required.
 
-Secondly, Human intervention is needed to define architecture, in particular, to select the right model based on the
-task:
-a model has to be smart enough to abstract the spine ( Opus medium works, Composer 2.5 does not )
-but not too capable for the use case ( Fable tried encoding the entire application in the spine ).
+Secondly, Human intervention has been needed to define architecture, 
+in particular, to select the right model based on the task:
+a model had to be smart enough to abstract the spine ( Opus medium works, Composer 2.5 does not )
+but not too capable for the use case ( Fable overengineered it ).
 
-Lastly, Human intervention is needed to define test cases and story slicing.
-Delegating it fully, BMAD creates a massive amount of tests, even for simple applications, and also these slices are
-made by preference of the software itself.
-Horizontal slicing is not happening by default on BMAD.
+Lastly, Human intervention has been used to define test cases and story slicing.
+Without customization, BMAD created a massive amount of tests with unpredictable slicing strategy. 
+Horizontal slicing has been forced through the use of a custom prompts.
 
 ### Framework Comparison
 
