@@ -14,3 +14,6 @@ htmlcov/
 .ruff_cache/
 playwright-report/
 test-results/
+/_bmad/
+/.agents/
+/.claude/

@@ -13,8 +13,9 @@ a FastAPI + SQLModel backend and a React + Vite client.
 | Node.js                          | 24 LTS  | Frontend and Playwright (`make install`, `make test-frontend`, `make dev`)            |
 | GNU Make                         | 4.x     | Every entrypoint in this repo                                                         |
 | Docker with Compose v2           | —       | `make up`, `make test-e2e`, `make ci`                                                 |
+| [BMad Method](https://github.com/bmad-code-org/BMAD-METHOD)                | 6.11.0  | The agentic workflow this repo was built with: `npx bmad-method@6.11.0 install --tools claude-code,cursor --modules bmm --yes` |
 
-`make install` fails without all four.
+`make install` fails without the first four; BMad is only needed to re-run the agentic workflow.
 
 ## Run
 
