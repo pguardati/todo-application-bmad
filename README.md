@@ -3,7 +3,7 @@
 ![todo-application-bmad logo](application-ui.png)
 
 A personal todo board:
-a FastAPI + SQLModel backend and a React + Vite client.
+a Python + SQLite backend and a React client.
 
 ## Prerequisites
 
